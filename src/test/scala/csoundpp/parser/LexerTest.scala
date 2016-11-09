@@ -11,7 +11,7 @@ class LexerSuite extends FunSuite with Matchers {
 
   def testBadInput(input: String, loc: Location) = CsppLexer(input) match {
     case Right(output)                          => fail(output.toString ++ " was successful")
-    case Left(CsppLexerError(reportedLoc, _))   => reportedLoc should equal (loc)
+    case Left(CsppCompileError(reportedLoc, _)) => reportedLoc should equal (loc)
   }
 
   implicit class LexerTester(input: String) {

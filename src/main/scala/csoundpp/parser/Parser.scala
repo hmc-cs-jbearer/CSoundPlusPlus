@@ -19,7 +19,7 @@ object CsppParser extends Parsers {
     val reader = new CsppTokenReader(tokens)
     program(reader) match {
       case NoSuccess(msg, next) =>
-        Left(CsppParserError(Location(next.pos.line, next.pos.column), msg))
+        Left(new CsppParserError(Location(next.pos.line, next.pos.column), msg))
       case Success(result, _) => Right(result)
     }
   }

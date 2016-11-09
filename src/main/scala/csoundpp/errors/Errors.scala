@@ -1,11 +1,23 @@
 package cspp
 
+import scala.language.implicitConversions
+import scala.util.parsing.input.Position
+
 // Class used for reporting position of errors within the source file
 case class Location(line: Int, column: Int) {
   override def toString = s"$line:$column"
 }
 
-trait CsppCompileError
+object Location {
+  implicit def Position2Location(pos: Position): Location = Location(pos.line, pos.column)
+}
 
-case class CsppLexerError(location: Location, msg: String)
-case class CsppParserError(location: Location, msg: String)
+class CsppCompileError(val location: Location, val msg: String) extends Throwable
+
+object CsppCompileError {
+  def unapply(err: CsppCompileError): Option[(Location, String)] = Some((err.location, err.msg))
+}
+
+class CsppLexerError(location: Location, msg: String) extends CsppCompileError(location, msg)
+class CsppParserError(location: Location, msg: String) extends CsppCompileError(location, msg)
+class CsppTypeError(location: Location, msg: String) extends CsppCompileError(location, msg)

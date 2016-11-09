@@ -37,31 +37,31 @@ class ParserSuite extends FunSuite with Matchers {
    */
   def testBadProgram(input: Seq[CsppToken], loc: Location) = CsppParser(input) match {
     case Right(output)                          => fail(output.toString ++ " was successful")
-    case Left(CsppParserError(reportedLoc, _))  => reportedLoc should equal (loc)
+    case Left(CsppCompileError(reportedLoc, _)) => reportedLoc should equal (loc)
   }
 
   implicit class ParseTester(input: Seq[CsppToken]) {
     def ->(output: Ident) = testGoodInput(input, output, CsppParser.id)
-    def -/>(output: Ident) = testBadInput(input, CsppParser.id)
+    def -/>(output: ident.type) = testBadInput(input, CsppParser.id)
 
     def ->(output: Component) = testGoodInput(input, output, CsppParser.component)
-    def -/>(output: Component) = testBadInput(input, CsppParser.component)
+    def -/>(output: component.type) = testBadInput(input, CsppParser.component)
 
     def ->(output: Expr) = testGoodInput(input, output, CsppParser.expr)
-    def -/>(output: Expr) = testBadInput(input, CsppParser.expr)
+    def -/>(output: expr.type) = testBadInput(input, CsppParser.expr)
 
     def ->(output: Statement) = testGoodInput(input, output, CsppParser.statement)
-    def -/>(output: Statement) = testBadInput(input, CsppParser.statement)
+    def -/>(output: statement.type) = testBadInput(input, CsppParser.statement)
 
     def ->(output: Seq[Statement]) = testGoodProgram(input, output)
     def ->(error: ParseError) = testBadProgram(input, error)
   }
 
   // Overload selectors for -/> test
-  object ident extends Ident("")
-  object component extends Component
-  object expr extends Expr
-  object statement extends Statement
+  object ident
+  object component
+  object expr
+  object statement
 
   // Object used to state expectation for tests that should fail to parse
   class ParseError(line: Int, column: Int) extends Location(line, column)
@@ -324,13 +324,14 @@ class ParserSuite extends FunSuite with Matchers {
   // //////////////////////////////////////////////////////////////////////////////////////////////////
 
   def programTest[T](program: String, verify: Seq[CsppToken] => T) = CsppLexer(program) match {
-    case Right(output)                          => verify(output)
-    case Left(CsppLexerError(reportedLoc, msg)) =>
+    case Right(output)                            => verify(output)
+    case Left(CsppCompileError(reportedLoc, msg)) =>
       fail("Lexer error in parser test program. Possible regression in unit tests." ++
            reportedLoc.toString ++ ": " ++ msg)
   }
 
   implicit class ProgramTester(program: String) {
+    println(program)
     def ->(result: Seq[Statement]) = programTest(program, _ -> result)
     def ->(result: ParseError) = programTest(program, _ -> result)
   }

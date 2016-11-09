@@ -19,7 +19,8 @@ case object EQUALS extends CsppToken
 object CsppLexer extends JavaTokenParsers with RegexParsers {
 
   def apply(source: String): Either[CsppLexerError, Seq[CsppToken]] = parse(tokens, source) match {
-    case NoSuccess(msg, next) => Left(CsppLexerError(Location(next.pos.line, next.pos.column), msg))
+    case NoSuccess(msg, next) =>
+      Left(new CsppLexerError(Location(next.pos.line, next.pos.column), msg))
     case Success(result, _)   => Right(result)
   }
 
