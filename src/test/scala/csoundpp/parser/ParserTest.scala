@@ -41,23 +41,23 @@ class ParserSuite extends FunSuite with Matchers {
   }
 
   implicit class ParseTester(input: Seq[CsppToken]) {
-    def ->(output: Ident) = testGoodInput(input, output, CsppParser.id)
-    def -/>(output: ident.type) = testBadInput(input, CsppParser.id)
+    def ~>(output: Ident) = testGoodInput(input, output, CsppParser.id)
+    def ~/>(output: ident.type) = testBadInput(input, CsppParser.id)
 
-    def ->(output: Component) = testGoodInput(input, output, CsppParser.component)
-    def -/>(output: component.type) = testBadInput(input, CsppParser.component)
+    def ~>(output: Component) = testGoodInput(input, output, CsppParser.component)
+    def ~/>(output: component.type) = testBadInput(input, CsppParser.component)
 
-    def ->(output: Expr) = testGoodInput(input, output, CsppParser.expr)
-    def -/>(output: expr.type) = testBadInput(input, CsppParser.expr)
+    def ~>(output: Expr) = testGoodInput(input, output, CsppParser.expr)
+    def ~/>(output: expr.type) = testBadInput(input, CsppParser.expr)
 
-    def ->(output: Statement) = testGoodInput(input, output, CsppParser.statement)
-    def -/>(output: statement.type) = testBadInput(input, CsppParser.statement)
+    def ~>(output: Statement) = testGoodInput(input, output, CsppParser.statement)
+    def ~/>(output: statement.type) = testBadInput(input, CsppParser.statement)
 
-    def ->(output: Seq[Statement]) = testGoodProgram(input, output)
-    def ->(error: ParseError) = testBadProgram(input, error)
+    def ~>(output: Seq[Statement]) = testGoodProgram(input, output)
+    def ~>(error: ParseError) = testBadProgram(input, error)
   }
 
-  // Overload selectors for -/> test
+  // Overload selectors for ~/> test
   object ident
   object component
   object expr
@@ -72,12 +72,12 @@ class ParserSuite extends FunSuite with Matchers {
 
   test("component.nullary") {
     // foo
-    Seq(IDENT("foo")) -> VarComponent(Ident("foo"), Seq())
+    Seq(IDENT("foo")) ~> VarComponent(Ident("foo"), Seq())
   }
 
   test("component.oneary") {
     // foo(42)
-    Seq(IDENT("foo"), LPAREN, NUMBER(42), RPAREN) -> VarComponent(Ident("foo"), Seq(Num(42)))
+    Seq(IDENT("foo"), LPAREN, NUMBER(42), RPAREN) ~> VarComponent(Ident("foo"), Seq(Num(42)))
   }
 
   test("component.polyary") {
@@ -91,7 +91,7 @@ class ParserSuite extends FunSuite with Matchers {
       COMMA,
       NUMBER(44),
       RPAREN
-    ) ->
+    ) ~>
     VarComponent(Ident("foo"), Seq(Num(42), Num(43), Num(44)))
   }
 
@@ -104,7 +104,7 @@ class ParserSuite extends FunSuite with Matchers {
       NUMBER(43),
       NUMBER(44),
       RPAREN
-    ) -/> component
+    ) ~/> component
   }
 
   test("component.invalid.unmatchedLParen") {
@@ -113,7 +113,7 @@ class ParserSuite extends FunSuite with Matchers {
       IDENT("foo"),
       LPAREN,
       NUMBER(42)
-    ) -/> component
+    ) ~/> component
   }
 
   test("component.invalid.unmatchedRParen") {
@@ -122,7 +122,7 @@ class ParserSuite extends FunSuite with Matchers {
       IDENT("foo"),
       NUMBER(42),
       RPAREN
-    ) -/> component
+    ) ~/> component
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -130,19 +130,19 @@ class ParserSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("expression.number") {
-    Seq(NUMBER(42)) -> Num(42)
+    Seq(NUMBER(42)) ~> Num(42)
   }
 
   test("expression.var") {
-    Seq(IDENT("foo")) -> Var(Ident("foo"))
+    Seq(IDENT("foo")) ~> Var(Ident("foo"))
   }
 
   test("expression.chain.empty") {
-    Seq(LBRACE, RBRACE) -> Chain(Seq())
+    Seq(LBRACE, RBRACE) ~> Chain(Seq())
   }
 
   test("expression.chain.one") {
-    Seq(LBRACE, IDENT("foo"), RBRACE) -> Chain(Seq(VarComponent(Ident("foo"), Seq())))
+    Seq(LBRACE, IDENT("foo"), RBRACE) ~> Chain(Seq(VarComponent(Ident("foo"), Seq())))
   }
 
   test("expressions.chain.many") {
@@ -153,7 +153,7 @@ class ParserSuite extends FunSuite with Matchers {
       IDENT("bar"),
       IDENT("baz"),
       RBRACE
-    ) -> Chain(Seq(
+    ) ~> Chain(Seq(
       VarComponent(Ident("foo"), Seq()),
       VarComponent(Ident("bar"), Seq()),
       VarComponent(Ident("baz"), Seq())
@@ -170,7 +170,7 @@ class ParserSuite extends FunSuite with Matchers {
           NUMBER(44),
         RPAREN,
       RBRACE
-    ) -> Chain(Seq(VarComponent(Ident("foo"), Seq(Num(42), Num(43), Num(44)))))
+    ) ~> Chain(Seq(VarComponent(Ident("foo"), Seq(Num(42), Num(43), Num(44)))))
   }
 
   test("expression.chain.manyWithArgs") {
@@ -184,7 +184,7 @@ class ParserSuite extends FunSuite with Matchers {
           NUMBER(43),
         RPAREN,
       RBRACE
-    ) -> Chain(Seq(
+    ) ~> Chain(Seq(
       VarComponent(Ident("foo"), Seq(Num(42))),
       VarComponent(Ident("bar"), Seq(Num(43))),
       VarComponent(Ident("baz"), Seq(Num(42), Num(43)))
@@ -198,7 +198,7 @@ class ParserSuite extends FunSuite with Matchers {
         IDENT("foo"),
         IDENT("bar"), LPAREN, NUMBER(41), RPAREN,
       RBRACE
-    ) -> Chain(Seq(
+    ) ~> Chain(Seq(
       VarComponent(Ident("foo"), Seq()),
       VarComponent(Ident("bar"), Seq(Num(41)))
     ))
@@ -206,17 +206,17 @@ class ParserSuite extends FunSuite with Matchers {
 
   test("expressions.chain.invalid.noBraces") {
     // foo bar baz
-    Seq(IDENT("foo"), IDENT("bar"), IDENT("baz")) -/> expr
+    Seq(IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
   }
 
   test("expressions.chain.invalid.unmatchedLBrace") {
     // { foo bar baz
-    Seq(LBRACE, IDENT("foo"), IDENT("bar"), IDENT("baz")) -/> expr
+    Seq(LBRACE, IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
   }
 
   test("expressions.chain.invalid.unmatchedRBrace") {
     // foo bar baz }
-    Seq(IDENT("foo"), IDENT("bar"), IDENT("baz"), RBRACE) -/> expr
+    Seq(IDENT("foo"), IDENT("bar"), IDENT("baz"), RBRACE) ~/> expr
   }
 
   test("expressions.chain.invalid.commas") {
@@ -227,7 +227,7 @@ class ParserSuite extends FunSuite with Matchers {
         IDENT("bar"), COMMA,
         IDENT("baz"),
       RBRACE
-    ) -/> expr
+    ) ~/> expr
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -236,36 +236,36 @@ class ParserSuite extends FunSuite with Matchers {
 
   test("statement.assignment.ident") {
     // foo = bar
-    Seq(IDENT("foo"), EQUALS, IDENT("bar")) -> Assignment(Ident("foo"), Var(Ident("bar")))
+    Seq(IDENT("foo"), EQUALS, IDENT("bar")) ~> Assignment(Ident("foo"), Var(Ident("bar")))
   }
 
   test("statement.assignment.number") {
     // foo = 42
-    Seq(IDENT("foo"), EQUALS, NUMBER(42)) -> Assignment(Ident("foo"), Num(42))
+    Seq(IDENT("foo"), EQUALS, NUMBER(42)) ~> Assignment(Ident("foo"), Num(42))
   }
 
   test("statement.assignment.chain") {
     // foo = { bar }
-    Seq(IDENT("foo"), EQUALS, LBRACE, IDENT("bar"), RBRACE) ->
+    Seq(IDENT("foo"), EQUALS, LBRACE, IDENT("bar"), RBRACE) ~>
       Assignment(Ident("foo"), Chain(Seq(VarComponent(Ident("bar"), Seq()))))
   }
 
   test("statement.assignment.invalid.chain") {
     // foo = bar baz bat
-    Seq(IDENT("foo"), EQUALS, IDENT("bar"), IDENT("baz"), IDENT("bat")) -/> statement
+    Seq(IDENT("foo"), EQUALS, IDENT("bar"), IDENT("baz"), IDENT("bat")) ~/> statement
   }
 
   test("statement.assignment.invalid.undefined") {
-    Seq(IDENT("foo")) -/> statement
+    Seq(IDENT("foo")) ~/> statement
   }
 
   test("statement.assignment.invalid.incomplete") {
-    Seq(IDENT("foo"), EQUALS) -/> statement
+    Seq(IDENT("foo"), EQUALS) ~/> statement
   }
 
   test("statement.instrument.oneChannel") {
     // instr(1) = foo
-    Seq(INSTR, LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ->
+    Seq(INSTR, LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~>
       Instrument(Seq(Num(1)), Var(Ident("foo")))
   }
 
@@ -282,7 +282,7 @@ class ParserSuite extends FunSuite with Matchers {
         IDENT("foo"),
         IDENT("bar"),
       RBRACE
-    ) ->
+    ) ~>
       Instrument(Seq(Num(1), Num(3), Var(Ident("channel"))), Chain(Seq(
         VarComponent(Ident("foo"), Seq()),
         VarComponent(Ident("bar"), Seq())
@@ -291,32 +291,32 @@ class ParserSuite extends FunSuite with Matchers {
 
   test("statement.instrument.invalid.noChannels") {
     // instr() = foo
-    Seq(INSTR, LPAREN, RPAREN, EQUALS, IDENT("foo")) -/> statement
+    Seq(INSTR, LPAREN, RPAREN, EQUALS, IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.noParens") {
     // instr = foo
-    Seq(INSTR, EQUALS, IDENT("foo")) -/> statement
+    Seq(INSTR, EQUALS, IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.unmatchedLParen") {
     // instr(1 = foo
-    Seq(INSTR, LPAREN, NUMBER(1), EQUALS, IDENT("foo")) -/> statement
+    Seq(INSTR, LPAREN, NUMBER(1), EQUALS, IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.unmatchedRParen") {
     // instr 1) = foo
-    Seq(INSTR, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) -/> statement
+    Seq(INSTR, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.noKeyword") {
     // (1) = foo
-    Seq(LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) -/> statement
+    Seq(LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.wrongKeyword") {
     // instrument(1) = foo
-    Seq(IDENT("instrument"), LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) -/> statement
+    Seq(IDENT("instrument"), LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
   }
 
   // //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -331,13 +331,12 @@ class ParserSuite extends FunSuite with Matchers {
   }
 
   implicit class ProgramTester(program: String) {
-    println(program)
-    def ->(result: Seq[Statement]) = programTest(program, _ -> result)
-    def ->(result: ParseError) = programTest(program, _ -> result)
+    def ~>(result: Seq[Statement]) = programTest(program, _ ~> result)
+    def ~>(result: ParseError) = programTest(program, _ ~> result)
   }
 
   test("program.empty") {
-    Seq() -> Seq()
+    Seq() ~> Seq()
   }
 
   test("program.valid") {
@@ -359,7 +358,7 @@ class ParserSuite extends FunSuite with Matchers {
       source
       effect
     }
-    """ ->
+    """ ~>
     Seq(
       Assignment(Ident("foo"), Num(1)),
       Assignment(Ident("bar"), Var(Ident("foo"))),
@@ -396,7 +395,7 @@ class ParserSuite extends FunSuite with Matchers {
       source
       effect
     }
-    """ ->
+    """ ~>
     new ParseError(1, 1)
   }
 
@@ -419,7 +418,7 @@ class ParserSuite extends FunSuite with Matchers {
     |  source
     |  effect
     |}
-    """.stripMargin ->
+    """.stripMargin ~>
     new ParseError(13, 12)
   }
 
@@ -443,7 +442,7 @@ class ParserSuite extends FunSuite with Matchers {
     |
     |instr(4) = {
     |  source
-    |  effect""".stripMargin ->
+    |  effect""".stripMargin ~>
     new ParseError(20, 3)
   }
 }
