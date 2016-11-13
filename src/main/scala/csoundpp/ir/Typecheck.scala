@@ -11,8 +11,19 @@ object CsppTypeChecker {
    */
   type Env = HashMap[Ident, Function]
 
-  def apply(ast: Seq[Statement]): Either[CsppTypeError, Seq[Statement]] = apply(new Env(), ast)
+  /**
+   * Typecheck the given program. Typechecking is performed in an environment where built-in
+   * components are already mapped to their proper type. For example, fm -> Function(Source, 3) and
+   * compress -> Function(Effect, 2)
+   */
+  def apply(ast: Seq[Statement]): Either[CsppTypeError, Seq[Statement]] = apply(
+    addVars(new Env(),
+      Ident("fm") -> Function(Source, 3),
+      Ident("compress") -> Function(Effect, 2)
+    ),
+  ast)
 
+  // Used for unit tests that want to specify their own set of built-in bindings
   def apply(env: Env, ast: Seq[Statement]): Either[CsppTypeError, Seq[Statement]] = {
     try {
       Right(annotateStmts(env, ast))
@@ -34,10 +45,13 @@ object CsppTypeChecker {
     case Assignment(id, params, expr) => {
       // The params are in scope within the definition, so we have to annotate expr with an
       // extended environment which accounts for this
-      val newEnv = addVars(env, params, Seq.fill(params.length)(Function(Number, 0)))
+      val newBindings = for {
+        param <- params
+      } yield param -> Function(Number, 0)
+      val newEnv = addVars(env, newBindings: _*)
       val annotated = annotateExpr(newEnv, expr)
       val ty = Function(typeOf(annotated), params.length)
-      (addVar(env, id, ty), Assignment(id, params, annotated))
+      (addVars(env, id -> ty), Assignment(id, params, annotated))
     }
 
     case Instrument(channels, expr) => {
@@ -71,7 +85,7 @@ object CsppTypeChecker {
     val ty = typeOf(annotated)
     if (ty != expected){
       throw new CsppTypeError(
-        expr.pos, "Expected " ++ expected.toString ++ " but found " ++ ty.toString ++ ".")
+        expr.pos, s"Expected ${expected.toString} but found ${ty.toString}.")
     } else {
       annotated
     }
@@ -84,7 +98,7 @@ object CsppTypeChecker {
         case Source => AppComponent(annotatedApp) annotated Source
         case Effect => AppComponent(annotatedApp) annotated Effect
         case ty     => throw new CsppTypeError(
-          comp.pos, "Expected source or effect, but found " ++ ty.toString ++ ".")
+          comp.pos, s"Expected source or effect, but found ${ty.toString}.")
       }
     }
   }
@@ -94,7 +108,7 @@ object CsppTypeChecker {
     val ty = typeOf(annotated)
     if (ty != expected) {
       throw new CsppTypeError(
-        comp.pos, "Expected " ++ expected.toString ++ " but found " ++ ty.toString ++ ".")
+        comp.pos, s"Expected ${expected.toString} but found ${ty.toString}.")
     } else {
       annotated
     }
@@ -116,30 +130,26 @@ object CsppTypeChecker {
 
   def lookupVar(env: Env, id: Ident) = env get id match {
     case Some(ty) => ty
-    case None => throw new CsppTypeError(id.pos, "Unknown identifier '" ++ id.name ++ "'.")
+    case None => throw new CsppTypeError(id.pos, s"Unknown identifier '${id.name}'.")
   }
 
-  def addVar(env: Env, id: Ident, ty: Function) =
-    if (env contains id) {
-      throw new CsppTypeError(
-        id.pos, "Redeclaring identifier '" ++ id.name ++ "' with a different type.")
-    } else {
-      env + (id -> ty)
-    }
-
-  def addVars(env: Env, ids: Seq[Ident], tys: Seq[Function]): Env = {
-    require(ids.length == tys.length)
-    if (ids.isEmpty) {
+  def addVars(env: Env, mappings: (Ident, Function)*): Env = {
+    if (mappings.isEmpty) {
       env
+    } else if (env contains mappings.head._1) {
+      val pos = mappings.head._1.pos
+      val name = mappings.head._1.name
+      throw new CsppTypeError(
+        pos, s"Redeclaring identifier '$name' with a different type.")
     } else {
-      addVars(addVar(env, ids.head, tys.head), ids.tail, tys.tail)
+      addVars(env + mappings.head, mappings.tail: _*)
     }
   }
 
   def typeOf[T <: TypeAnnotation with Positional](elem: T) = elem.ty match {
     case Some(ty) => ty
     case None => throw new CsppTypeError(
-      elem.pos, "Unable to deduce type of " ++ elem.toString ++ ".")
+      elem.pos, s"Unable to deduce type of $elem.")
   }
 
 }
