@@ -8,12 +8,23 @@ class TypecheckSuite extends FunSuite with Matchers {
 
   type Env = CsppTypeChecker.Env
 
-  def env(mappings: (String, CsppType)*): Env =
+  // Syntactic sugar for function types
+  implicit class ZeroAry(resultTy: CsppType) extends Function(resultTy, 0)
+  implicit class PolyAry(input: (CsppType, Int)) extends Function(input._1, input._2)
+
+  def env(mappings: (String, Function)*): Env =
     if (mappings.isEmpty) {
       new Env()
     } else {
       env(mappings.tail:_*) + (Ident(mappings.head._1) -> mappings.head._2)
     }
+
+  // Syntactic sugar for 0-argument functions (ie variables)
+  def Var(id: Ident) = Application(id, Seq())
+  def Assign(id: Ident, body: Expr) = Assignment(id, Seq(), body)
+
+  // Syntactic sugar for application components
+  def VarComponent(id: Ident, args: Seq[Expr]) = AppComponent(Application(id, args))
 
   def tryGoodElement[T](env: Env, input: T, expected: T, annotator: (Env, T) => T) = {
     annotator(env, input) should equal (expected)
@@ -127,20 +138,6 @@ class TypecheckSuite extends FunSuite with Matchers {
   object expr extends ExpectFailure
   object statement extends ExpectFailure
 
-  implicit class ExprAnnotator(expr: Expr) {
-    def annotated(ty: CsppType): Expr = expr match {
-      case Num(n, _)              => Num(n, Some(ty))
-      case Var(i, _)              => Var(i, Some(ty))
-      case Chain(b, _)            => Chain(b, Some(ty))
-    }
-  }
-
-  implicit class CompAnnotator(comp: Component) {
-    def annotated(ty: CsppType): Component = comp match {
-      case VarComponent(i, a, _)  => VarComponent(i, a, Some(ty))
-    }
-  }
-
   // Object used to state expectation for tests that should fail the typecheck phase
   class TypeError(line: Int, column: Int) extends Location(line, column)
 
@@ -157,8 +154,8 @@ class TypecheckSuite extends FunSuite with Matchers {
     val args = Seq(Num(1), Var(Ident("num")))
     val annotatedArgs = args map ((e: Expr) => e annotated Number)
     val comp = VarComponent(Ident("source"), args)
-    val annotatedComp = VarComponent(Ident("source"), annotatedArgs, Some(Source))
-    env("source" -> Source, "num" -> Number) ~> comp ~> annotatedComp
+    val annotatedComp = VarComponent(Ident("source"), annotatedArgs) annotated Source
+    env("source" -> (Source, 2), "num" -> Number) ~> comp ~> annotatedComp
   }
 
   test("component.var.effect.noArgs") {
@@ -171,7 +168,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val annotatedArgs = args map ((e: Expr) => e annotated Number)
     val comp = VarComponent(Ident("effect"), annotatedArgs)
     val annotatedComp = comp annotated Effect
-    env("effect" -> Effect, "num" -> Number) ~> comp ~> annotatedComp
+    env("effect" -> (Effect, 2), "num" -> Number) ~> comp ~> annotatedComp
   }
 
   test("component.var.invalid.unknownID") {
@@ -260,49 +257,67 @@ class TypecheckSuite extends FunSuite with Matchers {
 
   test("statement.assignment.num") {
     val expr = Num(42)
-    val stmt = Assignment(Ident("foo"), expr)
-    val annotated = Assignment(Ident("foo"), expr annotated Number)
+    val stmt = Assign(Ident("foo"), expr)
+    val annotated = Assign(Ident("foo"), expr annotated Number)
     env() ~> stmt ~> annotated
   }
 
   test("statement.assignment.var") {
     val expr = Var(Ident("bar"))
-    val stmt = Assignment(Ident("foo"), expr)
-    val annotated = Assignment(Ident("foo"), expr annotated Number)
+    val stmt = Assign(Ident("foo"), expr)
+    val annotated = Assign(Ident("foo"), expr annotated Number)
     env("bar" -> Number) ~> stmt ~> annotated
   }
 
   test("statement.assignment.chain") {
-    val expr = Chain(Seq(VarComponent(Ident("source"), Seq())))
+    val comp = VarComponent(Ident("source"), Seq())
+    val expr = Chain(Seq(comp))
+    val stmt = Assign(Ident("foo"), expr)
+    val annotated = Assign(Ident("foo"), Chain(Seq(comp annotated Source)) annotated Source)
+    env("source" -> Source) ~> stmt ~> annotated
+  }
+
+  test("statement.assignment.chainWithParams") {
+    val comp = AppComponent(Application(Ident("source"), Seq(Var(Ident("param")))))
+    val expr = Chain(Seq(comp))
+    val stmt = Assignment(Ident("foo"), Seq(Ident("param")), expr)
+    val annotated = Assignment(Ident("foo"), Seq(Ident("param")),
+      Chain(Seq(
+        AppComponent(Application(
+          Ident("source"),
+          Seq(Var(Ident("param")) annotated Number)
+        )) annotated Source
+      )) annotated Source)
+    env("source" -> (Source, 1)) ~> stmt ~> annotated
   }
 
   test("statement.assignment.env") {
     val expr = Num(42)
     val stmts = Seq(
-      Assignment(Ident("foo"), expr),
-      Assignment(Ident("bar"), Var(Ident("foo")))
+      Assign(Ident("foo"), expr),
+      Assign(Ident("bar"), Var(Ident("foo")))
     )
     val annotated = Seq(
-      Assignment(Ident("foo"), expr annotated Number),
-      Assignment(Ident("bar"), Var(Ident("foo")) annotated Number)
+      Assign(Ident("foo"), expr annotated Number),
+      Assign(Ident("bar"), Var(Ident("foo")) annotated Number)
     )
     env() ~> stmts ~> annotated
   }
 
   test("statement.assignment.invalid.unknownVar") {
-    env() ~> Assignment(Ident("foo"), Var(Ident("bar"))) ~/> statement
+    env() ~> Assign(Ident("foo"), Var(Ident("bar"))) ~/> statement
   }
 
   test("statement.assignment.invalid.reassignment") {
-    env("foo" -> Number) ~> Assignment(Ident("foo"), Num(42)) ~/> statement
+    env("foo" -> Number) ~> Assign(Ident("foo"), Num(42)) ~/> statement
   }
 
   test("statement.assignment.invalid.selfAssign.known") {
-    env("foo" -> Number) ~> Assignment(Ident("foo"), Var(Ident("foo"))) ~/> statement
+    env("foo" -> Number) ~> Assign(Ident("foo"), Var(Ident("foo"))) ~/> statement
   }
 
   test("statement.assignment.invalid.selfAssign.unknown") {
-    env() ~> Assignment(Ident("foo"), Var(Ident("foo"))) ~/> statement
+    env() ~> Assign(Ident("foo"), Var(Ident("foo"))) ~/> statement
   }
 
   test("statement.instrument.var") {
@@ -378,7 +393,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("program.valid") {
-    env("fm" -> Source, "compress" -> Effect) ~>
+    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
     """
     foo = 1
     bar = foo
@@ -399,9 +414,9 @@ class TypecheckSuite extends FunSuite with Matchers {
     }
     """ ~>
     Seq(
-      Assignment(Ident("foo"), Num(1) annotated Number),
-      Assignment(Ident("bar"), Var(Ident("foo")) annotated Number),
-      Assignment(Ident("source"),
+      Assign(Ident("foo"), Num(1) annotated Number),
+      Assign(Ident("bar"), Var(Ident("foo")) annotated Number),
+      Assign(Ident("source"),
         Chain(Seq(
           VarComponent(Ident("fm"),
             Seq(
@@ -411,7 +426,7 @@ class TypecheckSuite extends FunSuite with Matchers {
             ))
           annotated Source))
         annotated Source),
-      Assignment(Ident("effect"),
+      Assign(Ident("effect"),
         Chain(Seq(
           VarComponent(Ident("compress"),
             Seq(
@@ -432,7 +447,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   }
 
   test("program.invalid.firstLine") {
-    env("fm" -> Source, "compress" -> Effect) ~>
+    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
     """instr(1) = 1
     foo = 1
     bar = foo
@@ -456,7 +471,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   }
 
   test("program.invalid.middle") {
-    env("fm" -> Source, "compress" -> Effect) ~>
+    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
     """
     |foo = 1
     |bar = foo
@@ -480,7 +495,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   }
 
   test("program.invalid.lastLine") {
-    env("fm" -> Source, "compress" -> Effect) ~>
+    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
     """
     |foo = 1
     |bar = foo

@@ -66,6 +66,12 @@ class ParserSuite extends FunSuite with Matchers {
   // Object used to state expectation for tests that should fail to parse
   class ParseError(line: Int, column: Int) extends Location(line, column)
 
+  // Syntactic sugar for 0-argument functions (ie variables)
+  def Var(id: Ident) = Application(id, Seq())
+
+  // Syntactic sugar for application components
+  def VarComponent(id: Ident, args: Seq[Expr]) = AppComponent(Application(id, args))
+
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Component tests
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -236,18 +242,26 @@ class ParserSuite extends FunSuite with Matchers {
 
   test("statement.assignment.ident") {
     // foo = bar
-    Seq(IDENT("foo"), EQUALS, IDENT("bar")) ~> Assignment(Ident("foo"), Var(Ident("bar")))
+    Seq(IDENT("foo"), EQUALS, IDENT("bar")) ~> Assignment(Ident("foo"), Seq(), Var(Ident("bar")))
   }
 
   test("statement.assignment.number") {
     // foo = 42
-    Seq(IDENT("foo"), EQUALS, NUMBER(42)) ~> Assignment(Ident("foo"), Num(42))
+    Seq(IDENT("foo"), EQUALS, NUMBER(42)) ~> Assignment(Ident("foo"), Seq(), Num(42))
   }
 
   test("statement.assignment.chain") {
     // foo = { bar }
     Seq(IDENT("foo"), EQUALS, LBRACE, IDENT("bar"), RBRACE) ~>
-      Assignment(Ident("foo"), Chain(Seq(VarComponent(Ident("bar"), Seq()))))
+      Assignment(Ident("foo"), Seq(), Chain(Seq(VarComponent(Ident("bar"), Seq()))))
+  }
+
+  test("statement.assignment.chainWithArgs") {
+    // foo(n) = { bar(n) }
+    Seq(IDENT("foo"), LPAREN, IDENT("n"), RPAREN, EQUALS, LBRACE,
+      IDENT("bar"), LPAREN, IDENT("n"), RPAREN,
+    RBRACE) ~>
+    Assignment(Ident("foo"), Seq(Ident("n")), Chain(Seq(VarComponent(Ident("bar"), Seq(Var(Ident("n")))))))
   }
 
   test("statement.assignment.invalid.chain") {
@@ -319,9 +333,9 @@ class ParserSuite extends FunSuite with Matchers {
     Seq(IDENT("instrument"), LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
   }
 
-  // //////////////////////////////////////////////////////////////////////////////////////////////////
-  // // Program tests
-  // //////////////////////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  // Program tests
+  //////////////////////////////////////////////////////////////////////////////////////////////////
 
   def programTest[T](program: String, verify: Seq[CsppToken] => T) = CsppLexer(program) match {
     case Right(output)                            => verify(output)
@@ -360,12 +374,12 @@ class ParserSuite extends FunSuite with Matchers {
     }
     """ ~>
     Seq(
-      Assignment(Ident("foo"), Num(1)),
-      Assignment(Ident("bar"), Var(Ident("foo"))),
-      Assignment(Ident("source"), Chain(Seq(
+      Assignment(Ident("foo"), Seq(), Num(1)),
+      Assignment(Ident("bar"), Seq(), Var(Ident("foo"))),
+      Assignment(Ident("source"), Seq(), Chain(Seq(
         VarComponent(Ident("fm"), Seq(Var(Ident("bar")), Num(440), Num(10)))
       ))),
-      Assignment(Ident("effect"), Chain(Seq(
+      Assignment(Ident("effect"), Seq(), Chain(Seq(
         VarComponent(Ident("compress"), Seq(Num(40), Var(Ident("bar"))))
       ))),
       Instrument(Seq(Var(Ident("foo"))), Var(Ident("source"))),

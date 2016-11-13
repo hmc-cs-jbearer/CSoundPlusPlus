@@ -32,15 +32,21 @@ object CsppParser extends Parsers {
 
   /**
    * <statement> := instr( <exprs> ) = <expr>
+   *              | <ident>( <idents> ) = <expr>
    *              | <ident> = <expr>
    *
    * <exprs> := <expr>
    *          | <expr>, <exprs>
+   *
+   * <idents> := <empty>
+   *           | <ident>, <idents>
    */
   lazy val statement: Parser[Statement] = positioned {
     ( (INSTR ~> LPAREN ~> rep1sep(expr, COMMA) <~ RPAREN) ~ (EQUALS ~> expr)
         ^^ { case n~v => Instrument(n, v) }
-    | (id <~ EQUALS) ~ expr ^^ { case n~v => Assignment(n, v) }
+    | id ~ (LPAREN ~> repsep(id, COMMA) <~ RPAREN) ~ (EQUALS ~> expr)
+        ^^ { case n~p~v => Assignment(n, p, v) }
+    | (id <~ EQUALS) ~ expr ^^ { case n~v => Assignment(n, Seq(), v) }
     )
   }
 
@@ -51,7 +57,9 @@ object CsppParser extends Parsers {
    */
   lazy val expr: Parser[Expr] = positioned {
     ( LBRACE ~> (component *) <~ RBRACE ^^ { case c => Chain(c) }
-    | id                                ^^ { case i => Var(i) }
+    // At present, we only support parameter passing for applications in components. In general,
+    // expressions can only be evaluated as 0-argument functions. This may change in the future.
+    | id                                ^^ { case i => Application(i, Seq()) }
     | numberLiteral
     )
   }
@@ -61,8 +69,10 @@ object CsppParser extends Parsers {
    *              | <ident>
    */
   lazy val component: Parser[Component] = positioned {
-    ( id ~ (LPAREN ~> repsep(expr, COMMA) <~ RPAREN) ^^ { case i~a => VarComponent(i, a) }
-    | id                                             ^^ { case i => VarComponent(i, Seq()) }
+    ( id ~ (LPAREN ~> repsep(expr, COMMA) <~ RPAREN)
+        ^^ { case i~a => AppComponent(Application(i, a)) }
+    | id
+        ^^ { case i => AppComponent(Application(i, Seq())) }
     )
   }
 

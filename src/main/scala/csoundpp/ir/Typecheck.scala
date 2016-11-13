@@ -5,7 +5,11 @@ import scala.util.parsing.input.Positional
 
 object CsppTypeChecker {
 
-  type Env = HashMap[Ident, CsppType]
+  /**
+   * All variable bindings refer to functions. Even simple values, like x = 3, are considered
+   * 0-argument functions. This makes the typecheck phase much, much simpler.
+   */
+  type Env = HashMap[Ident, Function]
 
   def apply(ast: Seq[Statement]): Either[CsppTypeError, Seq[Statement]] = apply(new Env(), ast)
 
@@ -26,20 +30,29 @@ object CsppTypeChecker {
     }
 
   def annotateStmt(env: Env, stmt: Statement): (Env, Statement) = stmt match {
-    case Assignment(id, expr) => {
-      val annotated = annotateExpr(env, expr)
-      (addVar(env, id, typeOf(annotated)), Assignment(id, annotated))
+
+    case Assignment(id, params, expr) => {
+      // The params are in scope within the definition, so we have to annotate expr with an
+      // extended environment which accounts for this
+      val newEnv = addVars(env, params, Seq.fill(params.length)(Function(Number, 0)))
+      val annotated = annotateExpr(newEnv, expr)
+      val ty = Function(typeOf(annotated), params.length)
+      (addVar(env, id, ty), Assignment(id, params, annotated))
     }
+
     case Instrument(channels, expr) => {
       val annotatedChannels = channels.map(assertExpr(env, _: Expr, Number))
       val annotatedBody = assertExpr(env, expr, Source)
       (env, Instrument(annotatedChannels, annotatedBody))
     }
+
   }
 
   def annotateExpr(env: Env, expr: Expr): Expr = expr match {
-    case Num(n, _)  => Num(n, Some(Number))
-    case Var(id, _) => Var(id, Some(lookupVar(env, id)))
+    case n: Num => n annotated Number
+
+    case app @ Application(id, args, _) => annotateApp(env, app)
+
     case Chain(body, _) => {
       // The type of a chain is either source or effect, based on the first component in the chain.
       val head = annotateComponent(env, body.head)
@@ -65,11 +78,11 @@ object CsppTypeChecker {
   }
 
   def annotateComponent(env: Env, comp: Component): Component = comp match {
-    case VarComponent(id, args, _) => {
-      val annotatedArgs = args.map(assertExpr(env, _, Number))
-      lookupVar(env, id) match {
-        case Source => VarComponent(id, annotatedArgs, Some(Source))
-        case Effect => VarComponent(id, annotatedArgs, Some(Effect))
+    case AppComponent(app, _) => {
+      val annotatedApp = annotateApp(env, app)
+      typeOf(annotatedApp) match {
+        case Source => AppComponent(annotatedApp) annotated Source
+        case Effect => AppComponent(annotatedApp) annotated Effect
         case ty     => throw new CsppTypeError(
           comp.pos, "Expected source or effect, but found " ++ ty.toString ++ ".")
       }
@@ -87,18 +100,41 @@ object CsppTypeChecker {
     }
   }
 
+  def annotateApp(env: Env, app: Application): Application = {
+    val id = app.name
+    val args = app.args
+    val annotatedArgs = args.map(assertExpr(env, _, Number))
+    val func = lookupVar(env, id)
+    if (func.arity == args.length) {
+      Application(id, annotatedArgs) annotated func.resultTy
+    } else {
+      throw new CsppTypeError(app.pos,
+        s"Wrong number of arguments to callable '${id}'. " ++
+        s"Expected ${func.arity}, found ${args.length}.")
+    }
+  }
+
   def lookupVar(env: Env, id: Ident) = env get id match {
     case Some(ty) => ty
     case None => throw new CsppTypeError(id.pos, "Unknown identifier '" ++ id.name ++ "'.")
   }
 
-  def addVar(env: Env, id: Ident, ty: CsppType) =
+  def addVar(env: Env, id: Ident, ty: Function) =
     if (env contains id) {
       throw new CsppTypeError(
         id.pos, "Redeclaring identifier '" ++ id.name ++ "' with a different type.")
     } else {
       env + (id -> ty)
     }
+
+  def addVars(env: Env, ids: Seq[Ident], tys: Seq[Function]): Env = {
+    require(ids.length == tys.length)
+    if (ids.isEmpty) {
+      env
+    } else {
+      addVars(addVar(env, ids.head, tys.head), ids.tail, tys.tail)
+    }
+  }
 
   def typeOf[T <: TypeAnnotation with Positional](elem: T) = elem.ty match {
     case Some(ty) => ty

@@ -12,7 +12,9 @@ object Location {
   implicit def Position2Location(pos: Position): Location = Location(pos.line, pos.column)
 }
 
-class CsppCompileError(val location: Location, val msg: String) extends Throwable
+class CsppCompileError(val location: Location, val msg: String) extends Throwable {
+    override def toString = s"$location: $msg"
+}
 
 object CsppCompileError {
   def unapply(err: CsppCompileError): Option[(Location, String)] = Some((err.location, err.msg))
