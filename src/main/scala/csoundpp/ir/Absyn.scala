@@ -1,5 +1,6 @@
 package cspp
 
+import scala.language.implicitConversions
 import scala.util.parsing.input.Positional
 
 /**
@@ -72,3 +73,11 @@ case object Source extends CsppType
 case object Effect extends CsppType
 case object Number extends CsppType
 case class Function(resultTy: CsppType, arity: Int) extends CsppType
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Syntactic sugar
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+object Ident {
+    implicit def String2Ident(s: String) = Ident(s)
+}

@@ -23,3 +23,4 @@ object CsppCompileError {
 class CsppLexerError(location: Location, msg: String) extends CsppCompileError(location, msg)
 class CsppParserError(location: Location, msg: String) extends CsppCompileError(location, msg)
 class CsppTypeError(location: Location, msg: String) extends CsppCompileError(location, msg)
+class CsppTranslateError(location: Location, msg: String) extends CsppCompileError(location, msg)
