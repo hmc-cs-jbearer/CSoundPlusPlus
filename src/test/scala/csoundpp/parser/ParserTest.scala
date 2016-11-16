@@ -6,20 +6,66 @@ import scala.util.parsing.input.CharSequenceReader
 
 class ParserSuite extends FunSuite with Matchers {
 
-  // Parse the input tokens using a specific parser.
-  def parse[T](input: Seq[CsppToken], parser: CsppParser.Parser[T]) =
-    CsppParser.phrase(parser)(new CsppTokenReader(input))
-
   // Assert that an input parses successfully and gives correct output.
-  def testGoodInput[T](input: Seq[CsppToken], output: T, parser: CsppParser.Parser[T]) = {
-    val result = parse(input, parser)
+  def testGoodInput(input: Seq[CsppToken], output: Statement) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.statement)(reader)
+    result shouldBe 'successful
+    result.get should equal (output)
+  }
+
+  def testGoodInput(input: Seq[CsppToken], output: Expr) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.expr)(reader)
+    result shouldBe 'successful
+    result.get should equal (output)
+  }
+
+  def testGoodInput(input: Seq[CsppToken], output: Component) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.component)(reader)
+    result shouldBe 'successful
+    result.get should equal (output)
+  }
+
+  def testGoodInput(input: Seq[CsppToken], output: Ident) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.id)(reader)
     result shouldBe 'successful
     result.get should equal (output)
   }
 
   // Assert that an input failes to parse.
-  def testBadInput[T](input: Seq[CsppToken], parser:CsppParser.Parser[T]) = {
-    parse(input, parser) should not be 'successful
+  def testBadInput[T](input: Seq[CsppToken], parser: statement.type) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.statement)(reader)
+    result should not be 'successful
+  }
+
+  def testBadInput[T](input: Seq[CsppToken], parser: expr.type) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.expr)(reader)
+    result should not be 'successful
+  }
+
+  def testBadInput[T](input: Seq[CsppToken], parser: component.type) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.component)(reader)
+    result should not be 'successful
+  }
+
+  def testBadInput[T](input: Seq[CsppToken], parser: ident.type) = {
+    val parser = new CsppParser()
+    val reader = new CsppTokenReader(input)
+    val result = parser.phrase(parser.id)(reader)
+    result should not be 'successful
   }
 
   /**
@@ -41,17 +87,17 @@ class ParserSuite extends FunSuite with Matchers {
   }
 
   implicit class ParseTester(input: Seq[CsppToken]) {
-    def ~>(output: Ident) = testGoodInput(input, output, CsppParser.id)
-    def ~/>(output: ident.type) = testBadInput(input, CsppParser.id)
+    def ~>(output: Ident) = testGoodInput(input, output)
+    def ~/>(output: ident.type) = testBadInput(input, output)
 
-    def ~>(output: Component) = testGoodInput(input, output, CsppParser.component)
-    def ~/>(output: component.type) = testBadInput(input, CsppParser.component)
+    def ~>(output: Component) = testGoodInput(input, output)
+    def ~/>(output: component.type) = testBadInput(input, output)
 
-    def ~>(output: Expr) = testGoodInput(input, output, CsppParser.expr)
-    def ~/>(output: expr.type) = testBadInput(input, CsppParser.expr)
+    def ~>(output: Expr) = testGoodInput(input, output)
+    def ~/>(output: expr.type) = testBadInput(input, output)
 
-    def ~>(output: Statement) = testGoodInput(input, output, CsppParser.statement)
-    def ~/>(output: statement.type) = testBadInput(input, CsppParser.statement)
+    def ~>(output: Statement) = testGoodInput(input, output)
+    def ~/>(output: statement.type) = testBadInput(input, output)
 
     def ~>(output: Seq[Statement]) = testGoodProgram(input, output)
     def ~>(error: ParseError) = testBadProgram(input, error)
@@ -410,7 +456,7 @@ class ParserSuite extends FunSuite with Matchers {
       effect
     }
     """ ~>
-    new ParseError(1, 1)
+    new ParseError(1, 7)
   }
 
   test("program.invalid.middle") {
