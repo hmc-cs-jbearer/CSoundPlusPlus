@@ -1,0 +1,46 @@
+/**
+ * A simple program which defines one source and one effect, and then combines these in two
+ * different instrument definitions.
+ *
+ * This is not meant to be an example of good Csound++ code. Rather, it is meant to showcase as many
+ * Csound++ features as feasible in a reasonable short example.
+ */
+
+index = 10 // The index of modulation for our fm-based source
+
+channel = 12 // One of the channels which will be played by an instrument
+
+/**
+ * This is a simple source that just wraps the built-in fm source.
+ * It takes two parameters, and it uses the value of the global constant `index`.
+ */
+fm_source(freq, amp) = {
+    fm(freq, amp, index)
+}
+
+/**
+ * Another simple chain which just wraps a built-in. This one takes one parameter and passes a
+ * number literal as an argument.
+ */
+compress_effect(threshold) = {
+    compress(threshold, 3)
+}
+
+/**
+ * This instrument combines the source and effect defined above. It makes use of the MIDI parameters
+ * `freq` and `amp`.
+ */
+instr(1) = {
+    fm_source(freq, amp)
+    compress_effect(40)
+}
+
+/**
+ * The same as the previous instrument, this definition makes use of the channel mapping features
+ * to map the instrument to two different channels, one given by a number literal and one by the
+ * value of another global constant.
+ */
+instr(2, channel) = {
+    fm_source(freq, amp)
+    compress_effect(40)
+}

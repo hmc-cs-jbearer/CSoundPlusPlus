@@ -7,6 +7,8 @@ object Cspp extends App {
     System.exit(1)
   }
 
+  def readFile(path: String) = io.Source.fromFile(path).getLines.mkString("\n")
+
   def compile(source: String): Either[CsppCompileError, CsppTranslator.CsLines] = {
     for {
       tokens <- CsppLexer(source).right
@@ -20,9 +22,11 @@ object Cspp extends App {
     usage()
   }
 
-  val source = io.Source.fromFile(args(0)).getLines.mkString("\n")
+  val preamble = readFile("resources/csound/preamble.csd")
+  val source = readFile(args(0))
+
   compile(source) match {
-    case Right(output) => println(output.mkString("\n"))
+    case Right(output) => println(preamble ++ output.mkString("\n"))
     case Left(err) => {
       System.err.println(err)
       System.exit(1)
