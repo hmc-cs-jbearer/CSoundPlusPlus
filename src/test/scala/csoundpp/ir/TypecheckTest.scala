@@ -304,6 +304,14 @@ class TypecheckSuite extends FunSuite with Matchers {
     env() ~> stmts ~> annotated
   }
 
+  test("statement.assignment.invalid.repeatedArg") {
+    val name = Ident("foo")
+    val param = Ident("param")
+    val definition = Var(Ident("definition"))
+
+    env("definition" -> Number) ~> Assignment(name, Seq(param, param), definition) ~/> statement
+  }
+
   test("statement.assignment.invalid.unknownVar") {
     env() ~> Assign(Ident("foo"), Var(Ident("bar"))) ~/> statement
   }
@@ -350,6 +358,32 @@ class TypecheckSuite extends FunSuite with Matchers {
     val instr = Instrument(Seq(channel), body)
     val annotated = Instrument(Seq(channel annotated Number), body annotated Source)
     env("source" -> Source, "channel" -> Number) ~> instr ~> annotated
+  }
+
+  def testMidiParam(paramName: String) = {
+    val channel = Num(1)
+    val param = Var(Ident(paramName))
+    val source = VarComponent(Ident("source"), Seq(param))
+    val instr = Instrument(Seq(channel), Chain(Seq(source)))
+    val annotated = Instrument(
+                      Seq(channel annotated Number),
+                      Chain(Seq(
+                        VarComponent(
+                          Ident("source"),
+                          Seq(param annotated Number))
+                        annotated Source
+                      ))
+                    annotated Source)
+
+    env("source" -> (Source, 1)) ~> instr ~> annotated
+  }
+
+  test("statement.instrument.midiParams.freq") {
+    testMidiParam("freq")
+  }
+
+  test("statement.instrument.midiParams.amp") {
+    testMidiParam("amp")
   }
 
   test("statement.instrument.invalid.illtypedChannel") {

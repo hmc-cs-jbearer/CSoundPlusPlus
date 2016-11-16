@@ -56,7 +56,17 @@ object CsppTypeChecker {
 
     case Instrument(channels, expr) => {
       val annotatedChannels = channels.map(assertExpr(env, _: Expr, Number))
-      val annotatedBody = assertExpr(env, expr, Source)
+
+      // Bind MIDI params (freq, amp, etc) to Numbers in the body of the instrument
+      val paramTy = Function(Number, 0)
+      val localEnv = addVars(env,
+        Ident("freq") -> paramTy,
+        Ident("amp") -> paramTy
+      )
+
+      val annotatedBody = assertExpr(localEnv, expr, Source)
+
+      // We return the old env, because the new identifiers are only in scope within the instrument
       (env, Instrument(annotatedChannels, annotatedBody))
     }
 
