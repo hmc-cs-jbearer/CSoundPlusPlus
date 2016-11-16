@@ -102,8 +102,16 @@ class LexerSuite extends FunSuite with Matchers {
     "// This is a comment\n42" -> NUMBER(42)
   }
 
-  test("comments.multiline") {
+  test("comments.multiline.beforeLine") {
+    "/* This\nis\na\ncomment\n*/42\n42" -> Seq(NUMBER(42), NUMBER(42))
+  }
+
+  test("comments.multiline.afterLine") {
     "42\n42/* This\nis\na\ncomment\n*/42\n42" -> Seq(NUMBER(42), NUMBER(42), NUMBER(42), NUMBER(42))
+  }
+
+  test("comments.multiline.withStars") {
+    "/* This\n * is\n * a comment\n */" -> Seq()
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////

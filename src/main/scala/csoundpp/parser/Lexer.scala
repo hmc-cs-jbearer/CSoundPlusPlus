@@ -66,7 +66,7 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
 
   val ignore: Parser[Unit] =
     ( """//.*(\n|$)""".r    ^^ { _ => () }
-    | """/\*[^(\*)/]*\*/""".r  ^^ { _ => () }
+    | """/\*([^\*]|\*[^/])*\*/""".r  ^^ { _ => () }
     | "\n"              ^^ { _ => () }
     )
 
