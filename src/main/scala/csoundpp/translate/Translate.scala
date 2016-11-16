@@ -138,13 +138,27 @@ object CsppTranslator {
     }
 
     case Instrument(channels, expr) => {
-      val (newContext, instrId) = instrName(context)
-      val localContext = extendLocalScope(newContext, Seq(Ident("freq"), Ident("amp")))
+      val (context2, instrId) = instrName(context)
+      val localContext = extendLocalScope(context2, Seq(Ident("freq"), Ident("amp")))
 
       // We ignore the final context for the same reason as above
       val (_, body, outName) = translateExpr(localContext, expr)
 
-      (newContext, instrDefine(instrId, body, outName)) // TODO map to the proper channels
+      val instrLines = instrDefine(instrId, body, outName)
+      val (context3, channelLines) = translateChannels(context2, instrId, channels)
+      (context3, instrLines ++ channelLines)
+    }
+  }
+
+  // Generate CSound code to map channels indicated by channels to the given instrument
+  def translateChannels(context: Context, instrId: String, channels: Seq[Expr]): (Context, CsLines) = {
+    if (channels.isEmpty) {
+      (context, Seq("")) // Empty line for readability
+    } else {
+      val (context2, channelLines, channelVar) = translateExpr(context, channels.head)
+      val mapLines = channelLines ++ Seq(s"massign $channelVar, $instrId")
+      val (context3, restLines) = translateChannels(context2, instrId, channels.tail)
+      (context3, mapLines ++ restLines)
     }
   }
 
