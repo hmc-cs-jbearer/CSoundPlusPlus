@@ -1,6 +1,6 @@
 package cspp
 
-import scala.collection.immutable.HashMap
+import scala.collection.immutable.{HashMap,HashSet}
 import scala.util.parsing.input.Positional
 
 object CsppTypeChecker {
@@ -18,7 +18,7 @@ object CsppTypeChecker {
    */
   def apply(ast: Seq[Statement]): Either[CsppTypeError, Seq[Statement]] = apply(
     addVars(new Env(),
-      Ident("fm") -> Function(Source, 4),
+      Ident("foscil") -> Function(Source, 4),
       Ident("compress") -> Function(Effect, 5),
       Ident("adsr") -> Function(Effect, 4)
     ),
@@ -76,52 +76,35 @@ object CsppTypeChecker {
   def annotateExpr(env: Env, expr: Expr): Expr = expr match {
     case n: Num => n annotated Number
 
+    case BinOp(l, op, r, _) =>
+      BinOp(assertExpr(env, l, Number), op, assertExpr(env, r, Number)) annotated Number
+
     case app @ Application(id, args, _) => annotateApp(env, app)
 
     case Chain(body, _) => {
       // The type of a chain is either source or effect, based on the first component in the chain.
-      val head = annotateComponent(env, body.head)
+      val head = assertExpr(env, body.head, Source || Effect)
       val ty = typeOf(head)
 
       // Regardless of whether a chain is a source or effect, everything after the first component
       // must be an effect.
-      val tail = body.tail.map(assertComponent(env, _: Component, Effect))
+      val tail = body.tail.map(assertExpr(env, _, Effect))
 
       Chain(head +: tail, Some(ty))
     }
   }
 
-  def assertExpr(env: Env, expr: Expr, expected: CsppType): Expr = {
+  def assertExpr(env: Env, expr: Expr, expected: CsppType): Expr =
+    assertExpr(env, expr, new HashSet() + expected)
+
+  def assertExpr(env: Env, expr: Expr, expected: Set[CsppType]): Expr = {
     val annotated = annotateExpr(env, expr)
     val ty = typeOf(annotated)
-    if (ty != expected){
+    if (expected contains ty) {
+      annotated
+    } else {
       throw new CsppTypeError(
         expr.pos, s"Expected ${expected.toString} but found ${ty.toString}.")
-    } else {
-      annotated
-    }
-  }
-
-  def annotateComponent(env: Env, comp: Component): Component = comp match {
-    case AppComponent(app, _) => {
-      val annotatedApp = annotateApp(env, app)
-      typeOf(annotatedApp) match {
-        case Source => AppComponent(annotatedApp) annotated Source
-        case Effect => AppComponent(annotatedApp) annotated Effect
-        case ty     => throw new CsppTypeError(
-          comp.pos, s"Expected source or effect, but found ${ty.toString}.")
-      }
-    }
-  }
-
-  def assertComponent(env: Env, comp: Component, expected: CsppType): Component = {
-    val annotated = annotateComponent(env, comp)
-    val ty = typeOf(annotated)
-    if (ty != expected) {
-      throw new CsppTypeError(
-        comp.pos, s"Expected ${expected.toString} but found ${ty.toString}.")
-    } else {
-      annotated
     }
   }
 
@@ -136,6 +119,17 @@ object CsppTypeChecker {
       throw new CsppTypeError(app.pos,
         s"Wrong number of arguments to callable '${id}'. " ++
         s"Expected ${func.arity}, found ${args.length}.")
+    }
+  }
+
+  def assertApp(env: Env, app: Application, expected: CsppType): Application = {
+    val annotated = annotateApp(env, app)
+    val ty = typeOf(annotated)
+    if (ty != expected) {
+      throw new CsppTypeError(
+        app.pos, s"Expected ${expected.toString} but found ${ty.toString}.")
+    } else {
+      annotated
     }
   }
 
@@ -161,6 +155,14 @@ object CsppTypeChecker {
     case Some(ty) => ty
     case None => throw new CsppTypeError(
       elem.pos, s"Unable to deduce type of $elem.")
+  }
+
+  implicit class TypeSetBuilder(input: CsppType) {
+    def ||(other: CsppType) = new HashSet + (input, other)
+  }
+
+  implicit class TypeSetExtender(input: Set[CsppType]) {
+    def ||(other: CsppType) = input + other
   }
 
 }

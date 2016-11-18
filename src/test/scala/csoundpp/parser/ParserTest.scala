@@ -2,13 +2,25 @@ package cspp
 
 import org.scalatest.FunSuite
 import org.scalatest.Matchers
-import scala.util.parsing.input.CharSequenceReader
+import scala.util.parsing.input.{Position,NoPosition}
+
+// Packrat parsers get really, REALLY() pissed off if the position is not consistent. Normally the
+// lexer would fix the position for all of the tokens it outputs, but a lot of our tests don't run
+// through the lexer; they just feed tokens directly into the parser. For these tests, we initialize
+// the positions of each token with an instance of one of these guys.
+case class MockPosition(offset: Int) extends Position {
+  def line = 0
+  def column = offset
+  def lineContents = ""
+}
 
 class ParserSuite extends FunSuite with Matchers {
 
   // Parse the input tokens using a specific parser.
-  def parse[T](input: Seq[CsppToken], parser: CsppParser.Parser[T]) =
-    CsppParser.phrase(parser)(new CsppTokenReader(input))
+  def parse[T](input: Seq[CsppToken], parser: CsppParser.Parser[T]) = {
+    val reader = new CsppTokenReader(input)
+    CsppParser.phrase(parser)(reader)
+  }
 
   // Assert that an input parses successfully and gives correct output.
   def testGoodInput[T](input: Seq[CsppToken], output: T, parser: CsppParser.Parser[T]) = {
@@ -41,11 +53,15 @@ class ParserSuite extends FunSuite with Matchers {
   }
 
   implicit class ParseTester(input: Seq[CsppToken]) {
+
+    for (i <- 0 to (input.length - 1)) {
+      if (input(i).pos == NoPosition) {
+        input(i).pos = MockPosition(i)
+      }
+    }
+
     def ~>(output: Ident) = testGoodInput(input, output, CsppParser.id)
     def ~/>(output: ident.type) = testBadInput(input, CsppParser.id)
-
-    def ~>(output: Component) = testGoodInput(input, output, CsppParser.component)
-    def ~/>(output: component.type) = testBadInput(input, CsppParser.component)
 
     def ~>(output: Expr) = testGoodInput(input, output, CsppParser.expr)
     def ~/>(output: expr.type) = testBadInput(input, CsppParser.expr)
@@ -60,7 +76,6 @@ class ParserSuite extends FunSuite with Matchers {
 
   // Overload selectors for ~/> test
   object ident
-  object component
   object expr
   object statement
   object program
@@ -70,68 +85,6 @@ class ParserSuite extends FunSuite with Matchers {
 
   // Syntactic sugar for 0-argument functions (ie variables)
   def Var(id: Ident) = Application(id, Seq())
-
-  // Syntactic sugar for application components
-  def VarComponent(id: Ident, args: Seq[Expr]) = AppComponent(Application(id, args))
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  // Component tests
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-
-  test("component.nullary") {
-    // foo
-    Seq(IDENT("foo")) ~> VarComponent(Ident("foo"), Seq())
-  }
-
-  test("component.oneary") {
-    // foo(42)
-    Seq(IDENT("foo"), LPAREN, NUMBER(42), RPAREN) ~> VarComponent(Ident("foo"), Seq(Num(42)))
-  }
-
-  test("component.polyary") {
-    // foo(42, 43, 44)
-    Seq(
-      IDENT("foo"),
-      LPAREN,
-      NUMBER(42),
-      COMMA,
-      NUMBER(43),
-      COMMA,
-      NUMBER(44),
-      RPAREN
-    ) ~>
-    VarComponent(Ident("foo"), Seq(Num(42), Num(43), Num(44)))
-  }
-
-  test("component.invalid.noCommas") {
-    // foo(42 43 44)
-    Seq(
-      IDENT("foo"),
-      LPAREN,
-      NUMBER(42),
-      NUMBER(43),
-      NUMBER(44),
-      RPAREN
-    ) ~/> component
-  }
-
-  test("component.invalid.unmatchedLParen") {
-    // foo(42
-    Seq(
-      IDENT("foo"),
-      LPAREN,
-      NUMBER(42)
-    ) ~/> component
-  }
-
-  test("component.invalid.unmatchedRParen") {
-    // foo 42)
-    Seq(
-      IDENT("foo"),
-      NUMBER(42),
-      RPAREN
-    ) ~/> component
-  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Expression tests
@@ -145,70 +98,88 @@ class ParserSuite extends FunSuite with Matchers {
     Seq(IDENT("foo")) ~> Var(Ident("foo"))
   }
 
+  test("expression.function.zeroary") {
+    // foo()
+    Seq(IDENT("foo"), LPAREN(), RPAREN()) ~>
+      Application(Ident("foo"), Seq())
+  }
+
+  test("expression.function.oneary") {
+    // foo(1)
+    Seq(IDENT("foo"), LPAREN(), NUMBER(1), RPAREN()) ~>
+      Application(Ident("foo"), Seq(Num(1)))
+  }
+
+  test("expression.function.polyary") {
+    // foo(arg1, 1)
+    Seq(IDENT("foo"), LPAREN(), NUMBER(1), COMMA(), NUMBER(1), RPAREN()) ~>
+      Application(Ident("foo"), Seq(Num(1), Num(1)))
+  }
+
   test("expression.chain.empty") {
-    Seq(LBRACE, RBRACE) ~> Chain(Seq())
+    Seq(LBRACE(), RBRACE()) ~> Chain(Seq())
   }
 
   test("expression.chain.one") {
-    Seq(LBRACE, IDENT("foo"), RBRACE) ~> Chain(Seq(VarComponent(Ident("foo"), Seq())))
+    Seq(LBRACE(), IDENT("foo"), RBRACE()) ~> Chain(Seq(Application(Ident("foo"), Seq())))
   }
 
   test("expressions.chain.many") {
     // { foo bar baz }
     Seq(
-      LBRACE,
+      LBRACE(),
       IDENT("foo"),
       IDENT("bar"),
       IDENT("baz"),
-      RBRACE
+      RBRACE()
     ) ~> Chain(Seq(
-      VarComponent(Ident("foo"), Seq()),
-      VarComponent(Ident("bar"), Seq()),
-      VarComponent(Ident("baz"), Seq())
+      Application(Ident("foo"), Seq()),
+      Application(Ident("bar"), Seq()),
+      Application(Ident("baz"), Seq())
     ))
   }
 
   test("expression.chain.oneWithArgs") {
     // { foo(42, 43, 44) }
     Seq(
-      LBRACE,
-        IDENT("foo"), LPAREN,
-          NUMBER(42), COMMA,
-          NUMBER(43), COMMA,
+      LBRACE(),
+        IDENT("foo"), LPAREN(),
+          NUMBER(42), COMMA(),
+          NUMBER(43), COMMA(),
           NUMBER(44),
-        RPAREN,
-      RBRACE
-    ) ~> Chain(Seq(VarComponent(Ident("foo"), Seq(Num(42), Num(43), Num(44)))))
+        RPAREN(),
+      RBRACE()
+    ) ~> Chain(Seq(Application(Ident("foo"), Seq(Num(42), Num(43), Num(44)))))
   }
 
   test("expression.chain.manyWithArgs") {
     // { foo(42) bar(43) baz(42, 43) }
     Seq(
-      LBRACE,
-        IDENT("foo"), LPAREN, NUMBER(42), RPAREN,
-        IDENT("bar"), LPAREN, NUMBER(43), RPAREN,
-        IDENT("baz"), LPAREN,
-          NUMBER(42), COMMA,
+      LBRACE(),
+        IDENT("foo"), LPAREN(), NUMBER(42), RPAREN(),
+        IDENT("bar"), LPAREN(), NUMBER(43), RPAREN(),
+        IDENT("baz"), LPAREN(),
+          NUMBER(42), COMMA(),
           NUMBER(43),
-        RPAREN,
-      RBRACE
+        RPAREN(),
+      RBRACE()
     ) ~> Chain(Seq(
-      VarComponent(Ident("foo"), Seq(Num(42))),
-      VarComponent(Ident("bar"), Seq(Num(43))),
-      VarComponent(Ident("baz"), Seq(Num(42), Num(43)))
+      Application(Ident("foo"), Seq(Num(42))),
+      Application(Ident("bar"), Seq(Num(43))),
+      Application(Ident("baz"), Seq(Num(42), Num(43)))
     ))
   }
 
   test("expressions.chain.mixedArgs") {
     // { foo bar(41) }
     Seq(
-      LBRACE,
+      LBRACE(),
         IDENT("foo"),
-        IDENT("bar"), LPAREN, NUMBER(41), RPAREN,
-      RBRACE
+        IDENT("bar"), LPAREN(), NUMBER(41), RPAREN(),
+      RBRACE()
     ) ~> Chain(Seq(
-      VarComponent(Ident("foo"), Seq()),
-      VarComponent(Ident("bar"), Seq(Num(41)))
+      Application(Ident("foo"), Seq()),
+      Application(Ident("bar"), Seq(Num(41)))
     ))
   }
 
@@ -217,25 +188,116 @@ class ParserSuite extends FunSuite with Matchers {
     Seq(IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
   }
 
-  test("expressions.chain.invalid.unmatchedLBrace") {
+  test("expressions.chain.invalid.unmatchedLB()race") {
     // { foo bar baz
-    Seq(LBRACE, IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
+    Seq(LBRACE(), IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
   }
 
-  test("expressions.chain.invalid.unmatchedRBrace") {
+  test("expressions.chain.invalid.unmatchedRB()race") {
     // foo bar baz }
-    Seq(IDENT("foo"), IDENT("bar"), IDENT("baz"), RBRACE) ~/> expr
+    Seq(IDENT("foo"), IDENT("bar"), IDENT("baz"), RBRACE()) ~/> expr
   }
 
   test("expressions.chain.invalid.commas") {
     // { foo, bar, baz }
     Seq(
-      LBRACE,
-        IDENT("foo"), COMMA,
-        IDENT("bar"), COMMA,
+      LBRACE(),
+        IDENT("foo"), COMMA(),
+        IDENT("bar"), COMMA(),
         IDENT("baz"),
-      RBRACE
+      RBRACE()
     ) ~/> expr
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  // Arithmetic tests
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+
+  test("arithmetic.term.mult") {
+    // 42 * i
+    Seq(NUMBER(42), STAR(), IDENT("i")) ~> BinOp(Num(42), Times, Application(Ident("i"), Seq()))
+  }
+
+  test("arithmetic.term.div") {
+    // 42 / i
+    Seq(NUMBER(42), SLASH(), IDENT("i")) ~> BinOp(Num(42), Divide, Application(Ident("i"), Seq()))
+  }
+
+  test("arithmetic.expr.add") {
+    // 42 + i
+    Seq(NUMBER(42), PLUS(), IDENT("i")) ~> BinOp(Num(42), Plus, Application(Ident("i"), Seq()))
+  }
+
+  test("arithmetic.expr.sub") {
+    // 42 + i
+    Seq(NUMBER(42), MINUS(), IDENT("i")) ~> BinOp(Num(42), Minus, Application(Ident("i"), Seq()))
+  }
+
+  test("arithmetic.associativity.mult") {
+    // 1 * 2 * 3
+    Seq(NUMBER(1), STAR(), NUMBER(2), STAR(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Times, Num(2)), Times, Num(3))
+  }
+
+  test("arithmetic.associativity.div") {
+    // 1 / 2 / 3
+    Seq(NUMBER(1), SLASH(), NUMBER(2), SLASH(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Divide, Num(2)), Divide, Num(3))
+  }
+
+  test("arithmetic.associativity.divMul") {
+    // 1 / 2 * 3
+    Seq(NUMBER(1), SLASH(), NUMBER(2), STAR(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Divide, Num(2)), Times, Num(3))
+  }
+
+  test("arithmetic.associativity.mulDiv") {
+    // 1 * 2 / 3
+    Seq(NUMBER(1), STAR(), NUMBER(2), SLASH(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Times, Num(2)), Divide, Num(3))
+  }
+
+
+  test("arithmetic.associativity.add") {
+    // 1 + 2 + 3
+    Seq(NUMBER(1), PLUS(), NUMBER(2), PLUS(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Plus, Num(2)), Plus, Num(3))
+  }
+
+  test("arithmetic.associativity.sub") {
+    // 1 - 2 - 3
+    Seq(NUMBER(1), MINUS(), NUMBER(2), MINUS(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Minus, Num(2)), Minus, Num(3))
+  }
+
+  test("arithmetic.associativity.subAdd") {
+    // 1 - 2 + 3
+    Seq(NUMBER(1), MINUS(), NUMBER(2), PLUS(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Minus, Num(2)), Plus, Num(3))
+  }
+
+  test("arithmetic.associativity.addSub") {
+    // 1 + 2 - 3
+    Seq(NUMBER(1), PLUS(), NUMBER(2), MINUS(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Plus, Num(2)), Minus, Num(3))
+  }
+
+  test("arithmetic.precedence.addMul") {
+    // 1 + 2 * 3
+    Seq(NUMBER(1), PLUS(), NUMBER(2), STAR(), NUMBER(3)) ~>
+      BinOp(Num(1), Plus, BinOp(Num(2), Times, Num(3)))
+  }
+
+  test("arithmetic.precedence.subDiv") {
+    // 1 - 2 / 3
+    Seq(NUMBER(1), MINUS(), NUMBER(2), SLASH(), NUMBER(3)) ~>
+      BinOp(Num(1), Minus, BinOp(Num(2), Divide, Num(3)))
+  }
+
+  test("arithmetic.precedence.parenthetical") {
+    // (1 + 2) * 3
+    Seq(LPAREN(), NUMBER(1), PLUS(), NUMBER(2), RPAREN(), STAR(), NUMBER(3)) ~>
+      BinOp(BinOp(Num(1), Plus, Num(2)), Times, Num(3))
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -244,31 +306,31 @@ class ParserSuite extends FunSuite with Matchers {
 
   test("statement.assignment.ident") {
     // foo = bar
-    Seq(IDENT("foo"), EQUALS, IDENT("bar")) ~> Assignment(Ident("foo"), Seq(), Var(Ident("bar")))
+    Seq(IDENT("foo"), EQUALS(), IDENT("bar")) ~> Assignment(Ident("foo"), Seq(), Var(Ident("bar")))
   }
 
   test("statement.assignment.number") {
     // foo = 42
-    Seq(IDENT("foo"), EQUALS, NUMBER(42)) ~> Assignment(Ident("foo"), Seq(), Num(42))
+    Seq(IDENT("foo"), EQUALS(), NUMBER(42)) ~> Assignment(Ident("foo"), Seq(), Num(42))
   }
 
   test("statement.assignment.chain") {
     // foo = { bar }
-    Seq(IDENT("foo"), EQUALS, LBRACE, IDENT("bar"), RBRACE) ~>
-      Assignment(Ident("foo"), Seq(), Chain(Seq(VarComponent(Ident("bar"), Seq()))))
+    Seq(IDENT("foo"), EQUALS(), LBRACE(), IDENT("bar"), RBRACE()) ~>
+      Assignment(Ident("foo"), Seq(), Chain(Seq(Application(Ident("bar"), Seq()))))
   }
 
   test("statement.assignment.chainWithArgs") {
     // foo(n) = { bar(n) }
-    Seq(IDENT("foo"), LPAREN, IDENT("n"), RPAREN, EQUALS, LBRACE,
-      IDENT("bar"), LPAREN, IDENT("n"), RPAREN,
-    RBRACE) ~>
-    Assignment(Ident("foo"), Seq(Ident("n")), Chain(Seq(VarComponent(Ident("bar"), Seq(Var(Ident("n")))))))
+    Seq(IDENT("foo"), LPAREN(), IDENT("n"), RPAREN(), EQUALS(), LBRACE(),
+      IDENT("bar"), LPAREN(), IDENT("n"), RPAREN(),
+    RBRACE()) ~>
+    Assignment(Ident("foo"), Seq(Ident("n")), Chain(Seq(Application(Ident("bar"), Seq(Var(Ident("n")))))))
   }
 
   test("statement.assignment.invalid.chain") {
     // foo = bar baz bat
-    Seq(IDENT("foo"), EQUALS, IDENT("bar"), IDENT("baz"), IDENT("bat")) ~/> statement
+    Seq(IDENT("foo"), EQUALS(), IDENT("bar"), IDENT("baz"), IDENT("bat")) ~/> statement
   }
 
   test("statement.assignment.invalid.undefined") {
@@ -276,63 +338,63 @@ class ParserSuite extends FunSuite with Matchers {
   }
 
   test("statement.assignment.invalid.incomplete") {
-    Seq(IDENT("foo"), EQUALS) ~/> statement
+    Seq(IDENT("foo"), EQUALS()) ~/> statement
   }
 
   test("statement.instrument.oneChannel") {
     // instr(1) = foo
-    Seq(INSTR, LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~>
+    Seq(INSTR(), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~>
       Instrument(Seq(Num(1)), Var(Ident("foo")))
   }
 
   test("statement.instrument.manyChannels") {
     // instr(1, 3, channel) = { foo bar }
     Seq(
-      INSTR, LPAREN,
-        NUMBER(1), COMMA,
-        NUMBER(3), COMMA,
+      INSTR(), LPAREN(),
+        NUMBER(1), COMMA(),
+        NUMBER(3), COMMA(),
         IDENT("channel"),
-      RPAREN,
-      EQUALS,
-      LBRACE,
+      RPAREN(),
+      EQUALS(),
+      LBRACE(),
         IDENT("foo"),
         IDENT("bar"),
-      RBRACE
+      RBRACE()
     ) ~>
       Instrument(Seq(Num(1), Num(3), Var(Ident("channel"))), Chain(Seq(
-        VarComponent(Ident("foo"), Seq()),
-        VarComponent(Ident("bar"), Seq())
+        Application(Ident("foo"), Seq()),
+        Application(Ident("bar"), Seq())
       )))
   }
 
   test("statement.instrument.invalid.noChannels") {
     // instr() = foo
-    Seq(INSTR, LPAREN, RPAREN, EQUALS, IDENT("foo")) ~/> statement
+    Seq(INSTR(), LPAREN(), RPAREN(), EQUALS(), IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.noParens") {
     // instr = foo
-    Seq(INSTR, EQUALS, IDENT("foo")) ~/> statement
+    Seq(INSTR(), EQUALS(), IDENT("foo")) ~/> statement
   }
 
-  test("statement.instrument.invalid.unmatchedLParen") {
+  test("statement.instrument.invalid.unmatchedLP()aren") {
     // instr(1 = foo
-    Seq(INSTR, LPAREN, NUMBER(1), EQUALS, IDENT("foo")) ~/> statement
+    Seq(INSTR(), LPAREN(), NUMBER(1), EQUALS(), IDENT("foo")) ~/> statement
   }
 
-  test("statement.instrument.invalid.unmatchedRParen") {
+  test("statement.instrument.invalid.unmatchedRP()aren") {
     // instr 1) = foo
-    Seq(INSTR, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
+    Seq(INSTR(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.noKeyword") {
     // (1) = foo
-    Seq(LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
+    Seq(LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~/> statement
   }
 
   test("statement.instrument.invalid.wrongKeyword") {
     // instrument(1) = foo
-    Seq(IDENT("instrument"), LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
+    Seq(IDENT("instrument"), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~/> statement
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -340,15 +402,15 @@ class ParserSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("import.resource") {
-    Seq(IMPORT, FILE("test/library.csp")) ~> Seq(
+    Seq(IMPORT(), FILE("test/library.csp")) ~> Seq(
       Assignment(Ident("lib_source"), Seq(Ident("freq"), Ident("amp")), Chain(Seq(
-        AppComponent(Application(Ident("fm"), Seq(Var(Ident("freq")), Var(Ident("amp")), Num(4))))
+        Application(Ident("fm"), Seq(Var(Ident("freq")), Var(Ident("amp")), Num(4)))
       )))
     )
   }
 
   test("import.notFound") {
-    Seq(IMPORT, FILE("test/nosuchfile.csp")) ~/> program
+    Seq(IMPORT(), FILE("test/nosuchfile.csp")) ~/> program
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -395,15 +457,15 @@ class ParserSuite extends FunSuite with Matchers {
       Assignment(Ident("foo"), Seq(), Num(1)),
       Assignment(Ident("bar"), Seq(), Var(Ident("foo"))),
       Assignment(Ident("source"), Seq(), Chain(Seq(
-        VarComponent(Ident("fm"), Seq(Var(Ident("bar")), Num(440), Num(10)))
+        Application(Ident("fm"), Seq(Var(Ident("bar")), Num(440), Num(10)))
       ))),
       Assignment(Ident("effect"), Seq(), Chain(Seq(
-        VarComponent(Ident("compress"), Seq(Num(40), Var(Ident("bar"))))
+        Application(Ident("compress"), Seq(Num(40), Var(Ident("bar"))))
       ))),
       Instrument(Seq(Var(Ident("foo"))), Var(Ident("source"))),
       Instrument(Seq(Num(2), Num(3)), Chain(Seq(
-        VarComponent(Ident("source"), Seq()),
-        VarComponent(Ident("effect"), Seq())
+        Application(Ident("source"), Seq()),
+        Application(Ident("effect"), Seq())
       )))
     )
   }
@@ -428,7 +490,7 @@ class ParserSuite extends FunSuite with Matchers {
       effect
     }
     """ ~>
-    new ParseError(1, 1)
+    new ParseError(1, 7)
   }
 
   test("program.invalid.middle") {
@@ -475,6 +537,6 @@ class ParserSuite extends FunSuite with Matchers {
     |instr(4) = {
     |  source
     |  effect""".stripMargin ~>
-    new ParseError(20, 3)
+    new ParseError(20, 4)
   }
 }

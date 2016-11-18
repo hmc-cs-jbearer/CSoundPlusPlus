@@ -4,20 +4,28 @@ import scala.language.postfixOps
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{Reader,Position,NoPosition}
 
-class CsppTokenReader(tokens: Seq[CsppToken]) extends Reader[CsppToken] {
-  override def first: CsppToken = tokens.head
-  override def atEnd: Boolean = tokens.isEmpty
-  override def pos: Position = tokens.headOption.map(_.pos).getOrElse(NoPosition)
-  override def rest: Reader[CsppToken] = new CsppTokenReader(tokens.tail)
+// A simple Position class which we will use to keep track of the end token
+case class Pos(line: Int, column: Int) extends Position {
+  def lineContents = ""
 }
 
-object CsppParser extends Parsers {
+class CsppTokenReader(tokens: Seq[CsppToken], lastPos: Pos = Pos(0, 0)) extends Reader[CsppToken] {
+  override def first: CsppToken = tokens.head
+  override def atEnd: Boolean = tokens.isEmpty
+  override def pos: Position = tokens.headOption.map(_.pos).getOrElse(lastPos)
+  override def rest: Reader[CsppToken] =
+    // Packrat parsers look at the token-after-the-end's position, so we always keep track of the
+    // next position after pos. That way if rest happens to be empty, we'll still have something
+    // sensible to report to the parser.
+    new CsppTokenReader(tokens.tail, Pos(pos.line, pos.column + 1))
+}
+
+object CsppParser extends Parsers with PackratParsers {
 
   override type Elem = CsppToken
 
   def apply(tokens: Seq[CsppToken]): Either[CsppParserError, Seq[Statement]] = {
-    val reader = new CsppTokenReader(tokens)
-    program(reader) match {
+    phrase(program)(new CsppTokenReader(tokens)) match {
       case NoSuccess(msg, next) =>
         Left(new CsppParserError(Location(next.pos.line, next.pos.column), msg))
       case Success(result, _) => Right(result)
@@ -27,11 +35,10 @@ object CsppParser extends Parsers {
   /**
    * <program> := <import>* <statement>*
    */
-  lazy val program: Parser[Seq[Statement]] = phrase(
+  def program: PackratParser[Seq[Statement]] =
     (importStmt *) ~ (statement *) ^^ { case i~s => i.flatten ++ s }
-  )
 
-  lazy val importStmt: Parser[Seq[Statement]] = IMPORT ~> (file into sourceFile _)
+  def importStmt: PackratParser[Seq[Statement]] = IMPORT() ~> (file into sourceFile _)
 
   def sourceFile(file: String): Parser[Seq[Statement]] = {
     val ast: Either[CsppCompileError, Seq[Statement]] = for {
@@ -57,49 +64,63 @@ object CsppParser extends Parsers {
    * <idents> := <empty>
    *           | <ident>, <idents>
    */
-  lazy val statement: Parser[Statement] = positioned {
-    ( (INSTR ~> LPAREN ~> rep1sep(expr, COMMA) <~ RPAREN) ~ (EQUALS ~> expr)
+  def statement: PackratParser[Statement] = positioned {
+    ( (INSTR() ~> LPAREN() ~> rep1sep(expr, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
         ^^ { case n~v => Instrument(n, v) }
-    | id ~ (LPAREN ~> repsep(id, COMMA) <~ RPAREN) ~ (EQUALS ~> expr)
+    | id ~ (LPAREN() ~> repsep(id, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
         ^^ { case n~p~v => Assignment(n, p, v) }
-    | (id <~ EQUALS) ~ expr ^^ { case n~v => Assignment(n, Seq(), v) }
+    | (id <~ EQUALS()) ~ expr ^^ { case n~v => Assignment(n, Seq(), v) }
     )
   }
 
   /**
-   * <expr> := { <component>* }
-   *         | <ident>
-   *         | <number>
+   * <expr> := { <expr>* }
+   *         | <expr> + <term>
+   *         | <expr> - <term>
+   *         | <term>
    */
-  lazy val expr: Parser[Expr] = positioned {
-    ( LBRACE ~> (component *) <~ RBRACE ^^ { case c => Chain(c) }
-    // At present, we only support parameter passing for applications in components. In general,
-    // expressions can only be evaluated as 0-argument functions. This may change in the future.
-    | id                                ^^ { case i => Application(i, Seq()) }
+  lazy val expr: PackratParser[Expr] = positioned {
+    ( LBRACE() ~> (expr *) <~ RBRACE() ^^ { case c => Chain(c) }
+    | expr ~ PLUS() ~ term ^^ { case e~PLUS()~t => BinOp(e, Plus, t) }
+    | expr ~ MINUS() ~ term ^^ { case e~MINUS()~t => BinOp(e, Minus, t) }
+    | term
+    )
+  }
+
+  /**
+   * <term> := <term> * <factor>
+   *         | <term> / <factor>
+   *         | <factor>
+   */
+  lazy val term: PackratParser[Expr] = positioned {
+    ( term ~ STAR() ~ factor ^^ { case t~STAR()~f => BinOp(t, Times, f) }
+    | term ~ SLASH() ~ factor ^^ { case t~SLASH()~f => BinOp(t, Divide, f) }
+    | factor
+    )
+  }
+
+  /**
+   * <factor> := ( <expr> )
+   *           | <ident> ( <exprs> )
+   *           | <ident>
+   *           | <number>
+   */
+  lazy val factor: PackratParser[Expr] = positioned {
+    ( LPAREN() ~> expr <~ RPAREN()
+    | id ~ (LPAREN() ~> repsep(expr, COMMA()) <~ RPAREN()) ^^ { case i~a => Application(i ,a) }
+    | id ^^ { i => Application(i, Seq()) }
     | numberLiteral
     )
   }
 
-  /**
-   * <component> := <ident>(<exprs>)
-   *              | <ident>
-   */
-  lazy val component: Parser[Component] = positioned {
-    ( id ~ (LPAREN ~> repsep(expr, COMMA) <~ RPAREN)
-        ^^ { case i~a => AppComponent(Application(i, a)) }
-    | id
-        ^^ { case i => AppComponent(Application(i, Seq())) }
-    )
+  def id: Parser[Ident] = positioned {
+    accept("identifier", { case IDENT(name) =>  Ident(name) })
   }
 
-  lazy val id: Parser[Ident] = positioned {
-    accept("identifier", { case IDENT(name) => Ident(name) })
-  }
+  def file: Parser[String] = accept("file path", { case FILE(f) => f })
 
-  lazy val file: Parser[String] = accept("file path", { case FILE(f) => f })
-
-  lazy val numberLiteral: Parser[Num] = positioned {
-    accept("number literal", { case NUMBER(n) => Num(n) })
+  def numberLiteral: Parser[Num] = positioned {
+    accept("number literal", { case NUMBER(n) =>  Num(n) })
   }
 
 }

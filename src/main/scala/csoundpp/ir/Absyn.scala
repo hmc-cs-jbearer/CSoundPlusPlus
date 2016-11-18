@@ -13,22 +13,35 @@ abstract trait TypeAnnotation {
 }
 
 /**
- * <expr> := <chain> | <ident> | <number>
+ * <expr> := <chain> | <ident> | <arith_expr>
  * All expressions are annotated with an optional type. The type annotation is
  * initialized to None at parse time and then filled in in the typecheck phase.
  */
 abstract class Expr extends ASTElem with TypeAnnotation {
   def annotated(newTy: CsppType): Expr
 }
-case class Chain(body: Seq[Component], ty: Option[CsppType] = None) extends Expr {
+case class Chain(body: Seq[Expr], ty: Option[CsppType] = None) extends Expr {
   def annotated(newTy: CsppType) = Chain(body, Some(newTy))
 }
 case class Application(name: Ident, args: Seq[Expr], ty: Option[CsppType] = None) extends Expr {
   def annotated(newTy: CsppType) = Application(name, args, Some(newTy))
 }
+
+case class BinOp(left: Expr, op: Bop, right: Expr, ty: Option[CsppType] = None)
+  extends Expr
+{
+  def annotated(newTy: CsppType) = BinOp(left, op, right, Some(newTy))
+}
+
 case class Num(value: Double, ty: Option[CsppType] = None) extends Expr {
   def annotated(newTy: CsppType) = Num(value, Some(newTy))
 }
+
+abstract class Bop
+case object Plus extends Bop
+case object Minus extends Bop
+case object Times extends Bop
+case object Divide extends Bop
 
 /**
  * <statement> := <ident> = <expr>
@@ -37,24 +50,6 @@ case class Num(value: Double, ty: Option[CsppType] = None) extends Expr {
 abstract class Statement extends ASTElem
 case class Assignment(name: Ident, params: Seq[Ident], definition: Expr) extends Statement
 case class Instrument(channels: Seq[Expr], definition: Expr) extends Statement
-
-/**
- * <component> := <ident>
- *              | <ident>( <expr>* )
- */
-abstract class Component extends ASTElem with TypeAnnotation {
-  def annotated(newTy: CsppType): Component
-}
-case class AppComponent(app: Application, ty: Option[CsppType] = None) extends Component {
-  def annotated(newTy: CsppType) = app.ty match {
-    case None                           => AppComponent(app annotated newTy, Some(newTy))
-    case Some(appTy) if appTy == newTy  => AppComponent(app, Some(newTy))
-
-    // Should never happen
-    case Some(appTy)                    => throw new CsppCompileError(pos,
-      s"Deduced type of ${this} (${newTy}) differs from type of ${app} (${appTy})")
-  }
-}
 
 /**
  * Identifiers must start with a letter, and can contain letters, numbers, and

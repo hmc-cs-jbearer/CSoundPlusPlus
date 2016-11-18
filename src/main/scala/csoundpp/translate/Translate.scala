@@ -169,6 +169,19 @@ object CsppTranslator {
       (context2, Seq(s"$localVar = $n"), localVar)
     }
 
+    case BinOp(l, op, r, _) => {
+      val (context2, leftLines, leftVar) = translateExpr(context, l)
+      val (context3, rightLines, rightVar) = translateExpr(context2, r)
+      val (context4, localVar) = localAnon(context3)
+      val opStr = op match {
+        case Plus => "+"
+        case Minus => "-"
+        case Times => "*"
+        case Divide => "/"
+      }
+      (context4, leftLines ++ rightLines :+ s"$localVar = $leftVar $opStr $rightVar", localVar)
+    }
+
     case app: Application => opcodeCall(context, app)
 
     case Chain(comps, Some(Effect)) => if (comps.isEmpty) {
@@ -188,22 +201,16 @@ object CsppTranslator {
     }
   }
 
-  def translateComps(context: Context, comps: Seq[Component]): (Context, CsLines) = {
+  def translateComps(context: Context, comps: Seq[Expr]): (Context, CsLines) = {
     require(!comps.isEmpty)
 
-    val comp = comps.head
-    val (context2, compLines) = comp match {
-      // The typechecker has already verified that the app is of the correct type (either source
-      // or effect). So when we translate the expression, we'll get something like
-      //    asig opcode args...
-      // or
-      //    asig opcode asig args...
-      // Which automatically takes care of the plumbing for us
-      case AppComponent(app, _) => {
-        val (context2, compLines, _) = translateExpr(context, app)
-        (context2, compLines)
-      }
-    }
+    // The typechecker has already verified that the app is of the correct type (either source
+    // or effect). So when we translate the expression, we'll get something like
+    //    asig opcode args...
+    // or
+    //    asig opcode asig args...
+    // Which automatically takes care of the plumbing for us
+    val (context2, compLines, _) = translateExpr(context, comps.head)
 
     if (comps.length == 1) {
       (context2, compLines)

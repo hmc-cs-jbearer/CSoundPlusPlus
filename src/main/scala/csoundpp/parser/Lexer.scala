@@ -10,14 +10,20 @@ trait CsppToken extends Positional
 case class IDENT(str: String) extends CsppToken
 case class NUMBER(num: Double) extends CsppToken
 case class FILE(str: String) extends CsppToken
-case object IMPORT extends CsppToken
-case object INSTR extends CsppToken
-case object LPAREN extends CsppToken
-case object RPAREN extends CsppToken
-case object LBRACE extends CsppToken
-case object RBRACE extends CsppToken
-case object COMMA extends CsppToken
-case object EQUALS extends CsppToken
+
+// Sadly, these must all be case classes (not objects) because they have a mutable position field
+case class IMPORT() extends CsppToken
+case class INSTR() extends CsppToken
+case class LPAREN() extends CsppToken
+case class RPAREN() extends CsppToken
+case class LBRACE() extends CsppToken
+case class RBRACE() extends CsppToken
+case class COMMA() extends CsppToken
+case class EQUALS() extends CsppToken
+case class STAR() extends CsppToken
+case class SLASH() extends CsppToken
+case class PLUS() extends CsppToken
+case class MINUS() extends CsppToken
 
 object CsppLexer extends JavaTokenParsers with RegexParsers {
 
@@ -50,35 +56,51 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
   }
 
   val importStmt: Parser[CsppToken] = positioned {
-    "import" ^^ { _ => IMPORT }
+    "import" ^^^ IMPORT()
   }
 
   val instr: Parser[CsppToken] = positioned {
-    "instr" ^^ { _ => INSTR }
+    "instr" ^^^ INSTR()
   }
 
   val lparen: Parser[CsppToken] = positioned {
-    "(" ^^ { _ => LPAREN }
+    "(" ^^^ LPAREN()
   }
 
   val rparen: Parser[CsppToken] = positioned {
-    ")" ^^ { _ => RPAREN }
+    ")" ^^^ RPAREN()
   }
 
   val lbrace: Parser[CsppToken] = positioned {
-    "{" ^^ { _ => LBRACE }
+    "{" ^^^ LBRACE()
   }
 
   val rbrace: Parser[CsppToken] = positioned {
-    "}" ^^ { _ => RBRACE }
+    "}" ^^^ RBRACE()
   }
 
   val comma: Parser[CsppToken] = positioned {
-    "," ^^ { _ => COMMA }
+    "," ^^^ COMMA()
   }
 
   val equals: Parser[CsppToken] = positioned {
-    "=" ^^ { _ => EQUALS }
+    "=" ^^^ EQUALS()
+  }
+
+  val star: Parser[CsppToken] = positioned {
+    "*" ^^^ STAR()
+  }
+
+  val slash: Parser[CsppToken] = positioned {
+    "/" ^^^ SLASH()
+  }
+
+  val plus: Parser[CsppToken] = positioned {
+    "+" ^^^ PLUS()
+  }
+
+  val minus: Parser[CsppToken] = positioned {
+    "-" ^^^ MINUS()
   }
 
   val ignore: Parser[Unit] =
@@ -97,6 +119,10 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
       | rbrace
       | comma
       | equals
+      | star
+      | slash
+      | plus
+      | minus
       | file
       | id
       | num

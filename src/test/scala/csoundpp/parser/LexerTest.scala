@@ -5,6 +5,19 @@ import org.scalatest.Matchers
 
 class LexerSuite extends FunSuite with Matchers {
 
+  def testGoodInputWithLocation(input: String, output: Seq[(CsppToken, Int, Int)]) = {
+    CsppLexer(input) match {
+      case Left(err) => fail(err)
+      case Right(tokens) => {
+        tokens.length should equal (output.length)
+        for ((tok, (expectedTok, line, col)) <- tokens zip output) {
+          tok should equal (expectedTok)
+          (tok.pos.line, tok.pos.column) should equal ((line, col))
+        }
+      }
+    }
+  }
+
   def testGoodInput(input: String, output: Seq[CsppToken]) = {
     CsppLexer(input) should equal (Right(output))
   }
@@ -15,9 +28,10 @@ class LexerSuite extends FunSuite with Matchers {
   }
 
   implicit class LexerTester(input: String) {
-    def ->(output: Seq[CsppToken]) = testGoodInput(input, output)
-    def ->(output: CsppToken) = testGoodInput(input, Seq(output))
-    def ->(error: LexError) = testBadInput(input, error)
+    def ~>(output: Seq[(CsppToken, Int, Int)]) = testGoodInputWithLocation(input, output)
+    def ~>(output: Seq[CsppToken]) = testGoodInput(input, output)
+    def ~>(output: CsppToken) = testGoodInput(input, Seq(output))
+    def ~>(error: LexError) = testBadInput(input, error)
   }
 
   // Object used to state expectation for tests that should fail the lexing phase
@@ -27,8 +41,8 @@ class LexerSuite extends FunSuite with Matchers {
   // Identifier tests
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  def testGoodIdent(input: String) = input -> IDENT(input)
-  def testBadIdent(input: String, loc: Int) = input -> new LexError(1, loc)
+  def testGoodIdent(input: String) = input ~> IDENT(input)
+  def testBadIdent(input: String, loc: Int) = input ~> new LexError(1, loc)
 
   test("identifier.lowercase") {
     testGoodIdent("foo")
@@ -62,20 +76,16 @@ class LexerSuite extends FunSuite with Matchers {
     testBadIdent("foo.bar", 4)
   }
 
-  test("identifier.invalid.dash") {
-    testBadIdent("foo-bar", 4)
-  }
-
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // File tests
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("file.normal") {
-    "\"~/Documents/myFile.txt\"" -> FILE("~/Documents/myFile.txt")
+    "\"~/Documents/myFile.txt\"" ~> FILE("~/Documents/myFile.txt")
   }
 
   test("file.backslashes") {
-    "\"C:\\\\Users\\\\jbearer\\\\Documents\\\\myFile.txt\"" ->
+    "\"C:\\\\Users\\\\jbearer\\\\Documents\\\\myFile.txt\"" ~>
       FILE("C:\\Users\\jbearer\\Documents\\myFile.txt")
   }
 
@@ -84,19 +94,19 @@ class LexerSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("number.integer") {
-    "42" -> NUMBER(42)
+    "42" ~> NUMBER(42)
   }
 
   test("number.decimal") {
-    "3.14" -> NUMBER(3.14)
+    "3.14" ~> NUMBER(3.14)
   }
 
   test("number.scientific") {
-    "1e5" -> NUMBER(1e5)
+    "1e5" ~> NUMBER(1e5)
   }
 
   test("number.list") {
-    "1, 2,3" -> Seq(NUMBER(1), COMMA, NUMBER(2), COMMA, NUMBER(3))
+    "1, 2,3" ~> Seq(NUMBER(1), COMMA(), NUMBER(2), COMMA(), NUMBER(3))
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -104,11 +114,11 @@ class LexerSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("import.keyword") {
-    "import" -> IMPORT
+    "import" ~> IMPORT()
   }
 
   test("import.withFile") {
-    "import \"~/Documents/myFile.txt\"" -> Seq(IMPORT, FILE("~/Documents/myFile.txt"))
+    "import \"~/Documents/myFile.txt\"" ~> Seq(IMPORT(), FILE("~/Documents/myFile.txt"))
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -116,27 +126,27 @@ class LexerSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("comments.inline.onlyComment") {
-    "// This is a comment" -> Seq()
+    "// This is a comment" ~> Seq[CsppToken]()
   }
 
   test("comments.inline.endOfLine") {
-    "42 // This is a comment" -> NUMBER(42)
+    "42 // This is a comment" ~> NUMBER(42)
   }
 
   test("comments.inline.beforeLine") {
-    "// This is a comment\n42" -> NUMBER(42)
+    "// This is a comment\n42" ~> NUMBER(42)
   }
 
   test("comments.multiline.beforeLine") {
-    "/* This\nis\na\ncomment\n*/42\n42" -> Seq(NUMBER(42), NUMBER(42))
+    "/* This\nis\na\ncomment\n*/42\n42" ~> Seq(NUMBER(42), NUMBER(42))
   }
 
   test("comments.multiline.afterLine") {
-    "42\n42/* This\nis\na\ncomment\n*/42\n42" -> Seq(NUMBER(42), NUMBER(42), NUMBER(42), NUMBER(42))
+    "42\n42/* This\nis\na\ncomment\n*/42\n42" ~> Seq(NUMBER(42), NUMBER(42), NUMBER(42), NUMBER(42))
   }
 
   test("comments.multiline.withStars") {
-    "/* This\n * is\n * a comment\n */" -> Seq()
+    "/* This\n * is\n * a comment\n */" ~> Seq[CsppToken]()
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -144,40 +154,68 @@ class LexerSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("tokens.instr") {
-    "instr" -> INSTR
+    "instr" ~> INSTR()
   }
 
   test("tokens.lparen") {
-    "(" -> LPAREN
+    "(" ~> LPAREN()
   }
 
   test("tokens.rparen") {
-    ")" -> RPAREN
+    ")" ~> RPAREN()
   }
 
   test("tokens.lbrace") {
-    "{" -> LBRACE
+    "{" ~> LBRACE()
   }
 
   test("tokens.rbrace") {
-    "}" -> RBRACE
+    "}" ~> RBRACE()
   }
 
   test("tokens.comma") {
-    "," -> COMMA
+    "," ~> COMMA()
   }
 
   test("tokens.equals") {
-    "=" -> EQUALS
+    "=" ~> EQUALS()
   }
 
   test("tokens.multiline") {
-    "foo\n42\n(\n)\n//comment\n=" -> Seq(
+    "foo\n42\n(\n)\n//comment\n=" ~> Seq(
       IDENT("foo"),
       NUMBER(42),
-      LPAREN,
-      RPAREN,
-      EQUALS
+      LPAREN(),
+      RPAREN(),
+      EQUALS()
+    )
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  // Location tests
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+
+  test("location") {
+    """foo = 1
+    |
+    |source = {
+    |  fm(foo, 440)
+    |}
+    |
+    """.stripMargin ~> Seq(
+      (IDENT("foo"), 1, 1),
+      (EQUALS(), 1, 5),
+      (NUMBER(1), 1, 7),
+      (IDENT("source"), 3, 1),
+      (EQUALS(), 3, 8),
+      (LBRACE(), 3, 10),
+      (IDENT("fm"), 4, 3),
+      (LPAREN(), 4, 5),
+      (IDENT("foo"), 4, 6),
+      (COMMA(), 4, 9),
+      (NUMBER(440), 4, 11),
+      (RPAREN(), 4, 14),
+      (RBRACE(), 5, 1)
     )
   }
 
