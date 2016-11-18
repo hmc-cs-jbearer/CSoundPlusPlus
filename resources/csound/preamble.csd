@@ -32,15 +32,48 @@ endop
 ;   A basic compressor.
 ; Inputs:
 ;   asig: the signal to compress
-;   ithresh: the threshold at which to begin compression (0 to 1).
-;   iratio: the denominator of the compression ratio. For example, if iratio = 3, then signals
-;       with amplitude greater than ithresh will be compressed by a factor of 3.
+;   iloknee: the threshold (0 to 1) at which to begin compression. Or, the highest input amplitude
+;       for which the slope of the compression function is 1.
+;   ihiknee: the threshold (0 to 1) at which the slope of the compression function is first equal
+;       to 1 / iratio.
+;   iratio: the compression ratio. This is the denominator of the slope of the compression funciton
+;       above ihiknee.
+;   iatt: the attack time in seconds.
+;   irel: the release time in seconds.
 ; Outputs:
 ;   asig: the resulting signal.
-opcode cspp_compress, a, aii
-asig, ithresh, iratio xin
-asig compress asig, asig, 0, ithresh, ithresh, iratio, 0.01, 0.1, 0.1
+opcode cspp_compress, a, aiiiii
+asig, iloknee, ihiknee, iratio, iatt, irel xin
+
+; The lowest level which will be allowed through the compressor. If set above 0, the compressor
+; starts to act as a noise reducer as well. We just want this opcode to be a compressor, so we set
+; the threshold to 0.
+ithresh = 0
+
+; The lookahead time of the compressor. This is an implementation detail and so is hidden from the
+; user. There is a tradeoff between small values, which result in small delays between input and
+; output, and large values, which improve the performance of the peak detection. 0.05 is the value
+; recommended by the CSound documentation (http://www.csounds.com/manual/html/compress.html).
+ilook = 0.05
+
+asig compress asig, asig, ithresh, iloknee, ihiknee, iratio, iatt, irel, ilook
 xout asig
+endop
+
+; adsr:
+;   An ADSR envelope generator. The input signal will have its amplitude attenuated by a time
+;   varying amount, as determined by the four ADSR parameters.
+; Inputs:
+;   asig: the signal to modify.
+;   iatt: the attack time of the envelope in seconds.
+;   idec: the decay time in seconds.
+;   isus: the sustain level, on a scale from 0 to 1.
+;   irel: the release time in second.
+opcode cspp_adsr, a, aiiii
+asig, iatt, idec, isus, irel xin
+
+kenv madsr iatt, idec, isus, irel
+xout kenv*asig
 endop
 
 ; The extra two lines here are necessary to separate the preamble from the begining of the user's code

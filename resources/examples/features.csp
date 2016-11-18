@@ -11,11 +11,12 @@ index = 10 // The index of modulation for our fm-based source
 channel = 12 // One of the channels which will be played by an instrument
 
 /**
- * This is a simple source that just wraps the built-in fm source.
+ * This is a simple source that just wraps the built-in fm source and provides it with an envelope.
  * It takes two parameters, and it uses the value of the global constant `index`.
  */
 fm_source(freq, amp) = {
-    fm(freq, amp, index)
+    fm(freq, amp, 2, index)
+    adsr(0.1, 0.01, 0.7, 0.1)
 }
 
 /**
@@ -23,7 +24,7 @@ fm_source(freq, amp) = {
  * number literal as an argument.
  */
 compress_effect(threshold) = {
-    compress(threshold, 3)
+    compress(threshold, threshold, 3, 0.01, 0.1)
 }
 
 /**
