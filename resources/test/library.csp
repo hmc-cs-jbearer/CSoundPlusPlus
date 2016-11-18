@@ -1,0 +1,7 @@
+/**
+ * This file contains a trivial CSound++ library. It is used for testing the library import system.
+ */
+
+lib_source(freq, amp) = {
+    fm(freq, amp, 4)
+}

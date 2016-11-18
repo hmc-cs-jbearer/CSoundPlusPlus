@@ -25,10 +25,26 @@ object CsppParser extends Parsers {
   }
 
   /**
-   * <program> := <statement> <program>
-   *            | <empty>
+   * <program> := <import>* <statement>*
    */
-  lazy val program: Parser[Seq[Statement]] = phrase(statement *)
+  lazy val program: Parser[Seq[Statement]] = phrase(
+    (importStmt *) ~ (statement *) ^^ { case i~s => i.flatten ++ s }
+  )
+
+  lazy val importStmt: Parser[Seq[Statement]] = IMPORT ~> (file into sourceFile _)
+
+  def sourceFile(file: String): Parser[Seq[Statement]] = {
+    val ast: Either[CsppCompileError, Seq[Statement]] = for {
+      source <- CsppFileReader(file).right
+      tokens <- CsppLexer(source).right
+      ast <- CsppParser(tokens).right
+    } yield ast
+
+    ast match {
+      case Right(result) => success(result)
+      case Left(CsppCompileError(pos, msg)) => err(s"Error in file $file ($pos): $msg")
+    }
+  }
 
   /**
    * <statement> := instr( <exprs> ) = <expr>
@@ -79,6 +95,8 @@ object CsppParser extends Parsers {
   lazy val id: Parser[Ident] = positioned {
     accept("identifier", { case IDENT(name) => Ident(name) })
   }
+
+  lazy val file: Parser[String] = accept("file path", { case FILE(f) => f })
 
   lazy val numberLiteral: Parser[Num] = positioned {
     accept("number literal", { case NUMBER(n) => Num(n) })

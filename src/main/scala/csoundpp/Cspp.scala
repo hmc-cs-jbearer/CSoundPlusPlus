@@ -7,26 +7,23 @@ object Cspp extends App {
     System.exit(1)
   }
 
-  def readFile(path: String) = io.Source.fromFile(path).getLines.mkString("\n")
-
-  def compile(source: String): Either[CsppCompileError, CsppTranslator.CsLines] = {
+  def compile(path: String): Either[CsppCompileError, String] = {
     for {
+      preamble <- CsppFileReader("csound/preamble.csd").right
+      source <- CsppFileReader(path).right
       tokens <- CsppLexer(source).right
       ast <- CsppParser(tokens).right
       annotated <- CsppTypeChecker(ast).right
       csound <- CsppTranslator(annotated).right
-    } yield csound
+    } yield preamble + csound.mkString("\n")
   }
 
   if (args.length != 1) {
     usage()
   }
 
-  val preamble = readFile("resources/csound/preamble.csd")
-  val source = readFile(args(0))
-
-  compile(source) match {
-    case Right(output) => println(preamble ++ output.mkString("\n"))
+  compile(args(0)) match {
+    case Right(output) => println(output)
     case Left(err) => {
       System.err.println(err)
       System.exit(1)

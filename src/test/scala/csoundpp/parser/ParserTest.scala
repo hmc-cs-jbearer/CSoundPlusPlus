@@ -54,6 +54,7 @@ class ParserSuite extends FunSuite with Matchers {
     def ~/>(output: statement.type) = testBadInput(input, CsppParser.statement)
 
     def ~>(output: Seq[Statement]) = testGoodProgram(input, output)
+    def ~/>(output: program.type) = testBadInput(input, CsppParser.program)
     def ~>(error: ParseError) = testBadProgram(input, error)
   }
 
@@ -62,6 +63,7 @@ class ParserSuite extends FunSuite with Matchers {
   object component
   object expr
   object statement
+  object program
 
   // Object used to state expectation for tests that should fail to parse
   class ParseError(line: Int, column: Int) extends Location(line, column)
@@ -331,6 +333,22 @@ class ParserSuite extends FunSuite with Matchers {
   test("statement.instrument.invalid.wrongKeyword") {
     // instrument(1) = foo
     Seq(IDENT("instrument"), LPAREN, NUMBER(1), RPAREN, EQUALS, IDENT("foo")) ~/> statement
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  // Import tests
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+
+  test("import.resource") {
+    Seq(IMPORT, FILE("test/library.csp")) ~> Seq(
+      Assignment(Ident("lib_source"), Seq(Ident("freq"), Ident("amp")), Chain(Seq(
+        AppComponent(Application(Ident("fm"), Seq(Var(Ident("freq")), Var(Ident("amp")), Num(4))))
+      )))
+    )
+  }
+
+  test("import.notFound") {
+    Seq(IMPORT, FILE("test/nosuchfile.csp")) ~/> program
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////

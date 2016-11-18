@@ -3,11 +3,14 @@ package cspp
 import scala.language.postfixOps
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.Positional
+import org.apache.commons.lang.StringEscapeUtils
 
 trait CsppToken extends Positional
 
 case class IDENT(str: String) extends CsppToken
 case class NUMBER(num: Double) extends CsppToken
+case class FILE(str: String) extends CsppToken
+case object IMPORT extends CsppToken
 case object INSTR extends CsppToken
 case object LPAREN extends CsppToken
 case object RPAREN extends CsppToken
@@ -24,6 +27,12 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
     case Success(result, _)   => Right(result)
   }
 
+  def processStringLiteral(literal: String) = {
+    require(literal(0) == '"' && literal(literal.length - 1) == '"')
+    val escaped = StringEscapeUtils.unescapeJava(literal)
+    escaped.slice(1, escaped.length - 1)
+  }
+
   // We can't skip newlines, because they affect how comments are parsed
   override def skipWhitespace = true
   override val whiteSpace = """[ \t\r\f]+""".r
@@ -34,6 +43,14 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
 
   val num: Parser[CsppToken] = positioned {
     floatingPointNumber <~ not("""[a-zA-Z_]""".r) ^^ { n => NUMBER(n.toDouble) }
+  }
+
+  val file: Parser[CsppToken] = positioned {
+    stringLiteral ^^ { s => FILE(processStringLiteral(s)) }
+  }
+
+  val importStmt: Parser[CsppToken] = positioned {
+    "import" ^^ { _ => IMPORT }
   }
 
   val instr: Parser[CsppToken] = positioned {
@@ -72,13 +89,15 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
 
   val tokens: Parser[Seq[CsppToken]] = phrase((ignore *) ~>
     rep(
-      ( instr
+      ( importStmt
+      | instr
       | lparen
       | rparen
       | lbrace
       | rbrace
       | comma
       | equals
+      | file
       | id
       | num
       ) <~ rep(ignore)

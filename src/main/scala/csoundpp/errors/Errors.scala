@@ -20,6 +20,7 @@ object CsppCompileError {
   def unapply(err: CsppCompileError): Option[(Location, String)] = Some((err.location, err.msg))
 }
 
+class CsppFileError(msg: String) extends CsppCompileError(Location(0, 0), msg)
 class CsppLexerError(location: Location, msg: String) extends CsppCompileError(location, msg)
 class CsppParserError(location: Location, msg: String) extends CsppCompileError(location, msg)
 class CsppTypeError(location: Location, msg: String) extends CsppCompileError(location, msg)
