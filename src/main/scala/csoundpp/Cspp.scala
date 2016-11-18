@@ -10,11 +10,14 @@ object Cspp extends App {
   def compile(path: String): Either[CsppCompileError, String] = {
     val importStdLib = Seq(IMPORT(), FILE("lib/standard.csp"))
 
+    // We have to disable importing of the input file, to avoid cyclic imports
+    val disabled = CsppParser.disablingContext(path)
+
     for {
       preamble <- CsppFileReader("csound/preamble.csd").right
       source <- CsppFileReader(path).right
       tokens <- CsppLexer(source).right
-      ast <- CsppParser(importStdLib ++ tokens).right
+      ast <- CsppParser(importStdLib ++ tokens, disabled).right
       annotated <- CsppTypeChecker(ast).right
       csound <- CsppTranslator(annotated).right
     } yield preamble + csound.mkString("\n")

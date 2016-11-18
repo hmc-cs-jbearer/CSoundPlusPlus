@@ -1,5 +1,6 @@
 package cspp
 
+import scala.collection.mutable.HashSet
 import scala.language.postfixOps
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{Reader,Position,NoPosition}
@@ -20,9 +21,15 @@ class CsppTokenReader(tokens: Seq[CsppToken], lastPos: Pos = Pos(0, 0)) extends 
     new CsppTokenReader(tokens.tail, Pos(pos.line, pos.column + 1))
 }
 
-object CsppParser extends Parsers with PackratParsers {
+class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.disablingContext())
+  extends Parsers with PackratParsers
+{
 
   override type Elem = CsppToken
+
+  def disable(path: String) = require(disablingContext.add(path))
+
+  def isDisabled(path: String) = disablingContext contains path
 
   def apply(tokens: Seq[CsppToken]): Either[CsppParserError, Seq[Statement]] = {
     phrase(program)(new CsppTokenReader(tokens)) match {
@@ -40,18 +47,30 @@ object CsppParser extends Parsers with PackratParsers {
 
   def importStmt: PackratParser[Seq[Statement]] = IMPORT() ~> (file into sourceFile _)
 
-  def sourceFile(file: String): Parser[Seq[Statement]] = {
-    val ast: Either[CsppCompileError, Seq[Statement]] = for {
-      source <- CsppFileReader(file).right
-      tokens <- CsppLexer(source).right
-      ast <- CsppParser(tokens).right
-    } yield ast
+  def sourceFile(file: String): Parser[Seq[Statement]] =
+    if (isDisabled(file)) {
+      success(Seq())
+    } else {
+      disable(file)
 
-    ast match {
-      case Right(result) => success(result)
-      case Left(CsppCompileError(pos, msg)) => err(s"Error in file $file ($pos): $msg")
+      val ast: Either[CsppCompileError, Seq[Statement]] = for {
+        source <- CsppFileReader(file).right
+        tokens <- CsppLexer(source).right
+
+        /**
+         * We pass in a reference to our disablingContext. This does two things:
+         * 1. It forces the new parser to ignore any files we've already disabled.
+         * 2. It allows the new parser to disable additional files, and we'll see the changes to
+         * the disabling context when it finishes.
+         */
+        ast <- CsppParser(tokens, disablingContext).right
+      } yield ast
+
+      ast match {
+        case Right(result) => success(result)
+        case Left(CsppCompileError(pos, msg)) => err(s"Error in file $file ($pos): $msg")
+      }
     }
-  }
 
   /**
    * <statement> := instr( <exprs> ) = <expr>
@@ -121,6 +140,26 @@ object CsppParser extends Parsers with PackratParsers {
 
   def numberLiteral: Parser[Num] = positioned {
     accept("number literal", { case NUMBER(n) =>  Num(n) })
+  }
+
+}
+
+object CsppParser {
+
+  // Used to keep track of which files have already been imported so we don't import anything twice.
+  type DisablingContext = HashSet[String]
+
+  def disablingContext(paths: String*): DisablingContext = {
+    val context = new DisablingContext()
+    for (path <- paths) {
+      context.add(path)
+    }
+    context
+  }
+
+  def apply(tokens: Seq[CsppToken], disabled: DisablingContext = disablingContext()) = {
+    val parser = new CsppParser(disabled)
+    parser(tokens)
   }
 
 }
