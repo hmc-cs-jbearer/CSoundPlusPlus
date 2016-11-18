@@ -1,0 +1,23 @@
+/**
+ * CSound++ Standard Library
+ */
+
+/**
+ * A frequency modulation source which is slightly easier to use than foscil.
+ * While foscil requires the user to specify the carrier and modulator frequencies (from which it is
+ * not immediately obvious what the fundamental of the output will be), fm allows the user to simply
+ * specify what they want the perceived pitch to be.
+ *
+ * Without assumptions, it becomes mathematically intensive to compute carrier and modulator
+ * frequencies which will result in the proper perceived fundamental. Therefore, this source
+ * assumes that the modulating frequency will be equal to the output frequency. The user can control
+ * the carrier frequency by adjusting the ratio parameter. As long as ratio is an integer, the
+ * desired output frequency will be achieved.
+ *
+ * Inputs:
+ *   amp: the amplitude of the signal, on a scale from 0 to 1.
+ *   freq: the fundamental frequency of the resulting signal, in Hz.
+ *   ratio: the ratio of the carrier frequency to the modulating frequency. Must be an integer.
+ *   index: the index of modulation.
+ */
+fm(amp, freq, ratio, index) = foscil(amp, freq * ratio, freq, index)

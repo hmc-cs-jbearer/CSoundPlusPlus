@@ -15,7 +15,7 @@ channel = 12 // One of the channels which will be played by an instrument
  * It takes two parameters, and it uses the value of the global constant `index`.
  */
 fm_source(freq, amp) = {
-    fm(freq, amp, 2, index)
+    fm(amp, freq, 2, index)
     adsr(0.1, 0.01, 0.7, 0.1)
 }
 

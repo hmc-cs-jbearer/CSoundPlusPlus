@@ -8,11 +8,13 @@ object Cspp extends App {
   }
 
   def compile(path: String): Either[CsppCompileError, String] = {
+    val importStdLib = Seq(IMPORT(), FILE("lib/standard.csp"))
+
     for {
       preamble <- CsppFileReader("csound/preamble.csd").right
       source <- CsppFileReader(path).right
       tokens <- CsppLexer(source).right
-      ast <- CsppParser(tokens).right
+      ast <- CsppParser(importStdLib ++ tokens).right
       annotated <- CsppTypeChecker(ast).right
       csound <- CsppTranslator(annotated).right
     } yield preamble + csound.mkString("\n")

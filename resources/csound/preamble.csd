@@ -9,24 +9,35 @@ nchnls = 1  ; Mono output (hopefully stereo sound will be supported in the futur
 ; Force all MIDI channel mappings to be made exlicitly (via future calls to massign)
 massign 0, 0
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Built in opcodes. All opcodes with a cspp_ prefix are visible to users via CSound++. For example,
 ; a reference to `fm` in CSound++ will compile to a call to the `cspp_fm` opcode.
 ; Opcodes prefixed with __cspp_ are not visible to the user, but are used in the implementation of
 ; the user-facing opcodes.
+;
+; The following are low-level opcodes, which are visible to the user, but are primarily inteneded to
+; be used in the implementation of library routines. They give access to CSound-level components.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; fm:
+; foscil:
 ;   A basic frequency modulated source.
 ; Inputs:
-;   ifreq: the fundamental frequency in Hz of the signal to produce.
 ;   iamp: the amplitude of the signal, on a scale from 0 to 1.
+;   ifcar: the frequency in Hz of the carrier oscillator.
+;   ifmod: the frequency in Hz of the modulating oscillator.
 ;   index: the index of modulation.
 ; Outputs:
 ;   asig: the resulting signal.
-opcode cspp_fm, a, iii
-ifreq, iamp, index xin
-asig foscil iamp, 1, ifreq, ifreq, index
+opcode cspp_foscil, a, iiii
+iamp, icar, imod, index xin
+asig foscil iamp, 1, icar, imod, index
 xout asig
 endop
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; The following are higher-level opcodes, which are implemented in CSound but use some of CSound's
+; higher-level features, and are intended for use directly by the user.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; fm:
 ;   A basic compressor.
@@ -75,6 +86,3 @@ asig, iatt, idec, isus, irel xin
 kenv madsr iatt, idec, isus, irel
 xout kenv*asig
 endop
-
-; The extra two lines here are necessary to separate the preamble from the begining of the user's code
-
