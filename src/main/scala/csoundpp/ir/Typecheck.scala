@@ -144,8 +144,12 @@ object CsppTypeChecker {
     } else if (env contains mappings.head._1) {
       val pos = mappings.head._1.loc
       val name = mappings.head._1.name
-      throw new CsppTypeError(
-        pos, s"Redeclaring identifier '$name' with a different type.")
+      val orig = env.keys.filter(_ == mappings.head._1).head.loc
+      val msg = if (orig == NoLocation)
+        s"Redefinition of built-in '$name'."
+      else
+        s"Redefinition of '$name'. First declared here:\n$orig"
+      throw new CsppTypeError(pos, msg)
     } else {
       addVars(env + mappings.head, mappings.tail: _*)
     }

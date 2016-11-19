@@ -20,7 +20,7 @@ object Cspp extends App {
       ast <- CsppParser(importStdLib ++ tokens, disabled).right
       annotated <- CsppTypeChecker(ast).right
       csound <- CsppTranslator(annotated).right
-    } yield preamble + csound.mkString("\n")
+    } yield preamble.contents + csound.mkString("\n")
   }
 
   if (args.length != 1) {
