@@ -3,6 +3,8 @@ package cspp
 import org.scalatest.FunSuite
 import org.scalatest.Matchers
 
+import tokens._
+
 class LexerSuite extends FunSuite with Matchers {
 
   def testGoodInputWithLocation(input: String, output: Seq[(CsppToken, Int, Int)]) = {

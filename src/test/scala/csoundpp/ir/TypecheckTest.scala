@@ -4,6 +4,9 @@ import scala.language.implicitConversions
 import org.scalatest.FunSuite
 import org.scalatest.Matchers
 
+import absyn._
+import tokens._
+
 class TypecheckSuite extends FunSuite with Matchers {
 
   type Env = CsppTypeChecker.Env

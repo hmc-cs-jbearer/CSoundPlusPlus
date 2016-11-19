@@ -1,5 +1,7 @@
 package cspp
 
+import tokens.{IMPORT,FILE}
+
 object Cspp extends App {
 
   def usage() = {

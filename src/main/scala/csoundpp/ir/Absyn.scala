@@ -1,7 +1,9 @@
-package cspp
+package cspp.absyn
 
 import scala.language.implicitConversions
 import scala.util.parsing.input.Positional
+
+import cspp._
 
 /**
  * Used to store positional information to aid in error reporting.

@@ -3,6 +3,8 @@ package cspp
 import scala.collection.immutable.{HashMap,HashSet}
 import scala.util.parsing.input.Positional
 
+import absyn._
+
 object CsppTypeChecker {
 
   /**

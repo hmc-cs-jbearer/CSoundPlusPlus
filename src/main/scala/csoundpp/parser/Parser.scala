@@ -5,6 +5,9 @@ import scala.language.postfixOps
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{Reader,Position,NoPosition}
 
+import absyn._
+import tokens._
+
 class CsppTokenReader(tokens: Seq[CsppToken], lastPos: Location = NoLocation) extends Reader[CsppToken] {
   override def first: CsppToken = tokens.head
   override def atEnd: Boolean = tokens.isEmpty

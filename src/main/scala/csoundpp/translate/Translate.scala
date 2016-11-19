@@ -3,6 +3,8 @@ package cspp
 import scala.collection.immutable.HashSet
 import scala.util.parsing.input.Positional
 
+import absyn._
+
 abstract class CsType(val typeId: Char) {
   override def toString = typeId.toString
 }

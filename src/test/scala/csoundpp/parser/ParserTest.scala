@@ -4,6 +4,9 @@ import org.scalatest.FunSuite
 import org.scalatest.Matchers
 import scala.util.parsing.input.{Position,NoPosition}
 
+import absyn._
+import tokens._
+
 // Packrat parsers get really, REALLY() pissed off if the position is not consistent. Normally the
 // lexer would fix the position for all of the tokens it outputs, but a lot of our tests don't run
 // through the lexer; they just feed tokens directly into the parser. For these tests, we initialize
