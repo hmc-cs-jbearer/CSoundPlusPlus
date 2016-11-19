@@ -22,9 +22,12 @@ class LexerSuite extends FunSuite with Matchers {
     CsppLexer(input) should equal (Right(output))
   }
 
-  def testBadInput(input: String, loc: Location) = CsppLexer(input) match {
+  def testBadInput(input: String, error: LexError) = CsppLexer(input) match {
     case Right(output)                          => fail(output.toString ++ " was successful")
-    case Left(CsppCompileError(reportedLoc, _)) => reportedLoc should equal (loc)
+    case Left(CsppCompileError(reportedLoc, _)) => {
+      reportedLoc.line should equal (error.line)
+      reportedLoc.column should equal (error.column)
+    }
   }
 
   implicit class LexerTester(input: String) {
@@ -35,7 +38,7 @@ class LexerSuite extends FunSuite with Matchers {
   }
 
   // Object used to state expectation for tests that should fail the lexing phase
-  class LexError(line: Int, column: Int) extends Location(line, column)
+  class LexError(line: Int, column: Int) extends Location(line, column, "")
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Identifier tests

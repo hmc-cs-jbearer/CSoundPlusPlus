@@ -5,20 +5,15 @@ import scala.language.postfixOps
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{Reader,Position,NoPosition}
 
-// A simple Position class which we will use to keep track of the end token
-case class Pos(line: Int, column: Int) extends Position {
-  def lineContents = ""
-}
-
-class CsppTokenReader(tokens: Seq[CsppToken], lastPos: Pos = Pos(0, 0)) extends Reader[CsppToken] {
+class CsppTokenReader(tokens: Seq[CsppToken], lastPos: Location = NoLocation) extends Reader[CsppToken] {
   override def first: CsppToken = tokens.head
   override def atEnd: Boolean = tokens.isEmpty
-  override def pos: Position = tokens.headOption.map(_.pos).getOrElse(lastPos)
+  override def pos: Location = tokens.headOption.map(_.loc).getOrElse(lastPos)
   override def rest: Reader[CsppToken] =
     // Packrat parsers look at the token-after-the-end's position, so we always keep track of the
     // next position after pos. That way if rest happens to be empty, we'll still have something
     // sensible to report to the parser.
-    new CsppTokenReader(tokens.tail, Pos(pos.line, pos.column + 1))
+    new CsppTokenReader(tokens.tail, Location(pos.line, pos.column + 1, pos.file))
 }
 
 class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.disablingContext())
@@ -31,11 +26,20 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
 
   def isDisabled(path: String) = disablingContext contains path
 
+  def reader(tokens: Seq[CsppToken]) = new PackratReader(new CsppTokenReader(tokens))
+
   def apply(tokens: Seq[CsppToken]): Either[CsppParserError, Seq[Statement]] = {
-    phrase(program)(new CsppTokenReader(tokens)) match {
-      case NoSuccess(msg, next) =>
-        Left(new CsppParserError(Location(next.pos.line, next.pos.column), msg))
+    phrase(program)(reader(tokens)) match {
+      case NoSuccess(msg, next: Input) =>
+        Left(new CsppParserError(next.pos.asInstanceOf[Location], msg))
       case Success(result, _) => Right(result)
+    }
+  }
+
+  def located[T <: CsppPositional](p: =>Parser[T]): Parser[T] = Parser { in =>
+    p(in) match {
+      case Success(t, in1) => Success((t setPos in.pos) inFile in.pos.asInstanceOf[Location].file, in1)
+      case ns: NoSuccess => ns
     }
   }
 
@@ -83,7 +87,7 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
    * <idents> := <empty>
    *           | <ident>, <idents>
    */
-  def statement: PackratParser[Statement] = positioned {
+  def statement: PackratParser[Statement] = located {
     ( (INSTR() ~> LPAREN() ~> rep1sep(expr, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
         ^^ { case n~v => Instrument(n, v) }
     | id ~ (LPAREN() ~> repsep(id, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
@@ -98,7 +102,7 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
    *         | <expr> - <term>
    *         | <term>
    */
-  lazy val expr: PackratParser[Expr] = positioned {
+  lazy val expr: PackratParser[Expr] = located {
     ( LBRACE() ~> (expr *) <~ RBRACE() ^^ { case c => Chain(c) }
     | expr ~ PLUS() ~ term ^^ { case e~PLUS()~t => BinOp(e, Plus, t) }
     | expr ~ MINUS() ~ term ^^ { case e~MINUS()~t => BinOp(e, Minus, t) }
@@ -111,7 +115,7 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
    *         | <term> / <factor>
    *         | <factor>
    */
-  lazy val term: PackratParser[Expr] = positioned {
+  lazy val term: PackratParser[Expr] = located {
     ( term ~ STAR() ~ factor ^^ { case t~STAR()~f => BinOp(t, Times, f) }
     | term ~ SLASH() ~ factor ^^ { case t~SLASH()~f => BinOp(t, Divide, f) }
     | factor
@@ -124,7 +128,7 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
    *           | <ident>
    *           | <number>
    */
-  lazy val factor: PackratParser[Expr] = positioned {
+  lazy val factor: PackratParser[Expr] = located {
     ( LPAREN() ~> expr <~ RPAREN()
     | id ~ (LPAREN() ~> repsep(expr, COMMA()) <~ RPAREN()) ^^ { case i~a => Application(i ,a) }
     | id ^^ { i => Application(i, Seq()) }
@@ -132,13 +136,13 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
     )
   }
 
-  def id: Parser[Ident] = positioned {
+  def id: Parser[Ident] = located {
     accept("identifier", { case IDENT(name) =>  Ident(name) })
   }
 
   def file: Parser[String] = accept("file path", { case FILE(f) => f })
 
-  def numberLiteral: Parser[Num] = positioned {
+  def numberLiteral: Parser[Num] = located {
     accept("number literal", { case NUMBER(n) =>  Num(n) })
   }
 

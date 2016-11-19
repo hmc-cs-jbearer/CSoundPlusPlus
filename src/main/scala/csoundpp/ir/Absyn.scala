@@ -6,7 +6,7 @@ import scala.util.parsing.input.Positional
 /**
  * Used to store positional information to aid in error reporting.
  */
-trait ASTElem extends Positional
+trait ASTElem extends CsppPositional
 
 abstract trait TypeAnnotation {
   val ty: Option[CsppType]

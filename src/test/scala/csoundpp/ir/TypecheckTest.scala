@@ -31,7 +31,10 @@ class TypecheckSuite extends FunSuite with Matchers {
     try {
       fail(annotator(env, input).toString ++ " was successful.")
     } catch {
-      case CsppCompileError(loc, _) => loc should equal (expected)
+      case CsppCompileError(loc, _) => {
+        loc.line should equal (expected.line)
+        loc.column should equal (expected.column)
+      }
     }
   }
 
@@ -131,7 +134,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   object statement extends ExpectFailure
 
   // Object used to state expectation for tests that should fail the typecheck phase
-  class TypeError(line: Int, column: Int) extends Location(line, column)
+  class TypeError(line: Int, column: Int) extends Location(line, column, "")
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Expression tests

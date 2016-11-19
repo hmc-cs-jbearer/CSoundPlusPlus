@@ -104,7 +104,7 @@ object CsppTypeChecker {
       annotated
     } else {
       throw new CsppTypeError(
-        expr.pos, s"Expected ${expected.toString} but found ${ty.toString}.")
+        expr.loc, s"Expected ${expected.toString} but found ${ty.toString}.")
     }
   }
 
@@ -116,7 +116,7 @@ object CsppTypeChecker {
     if (func.arity == args.length) {
       Application(id, annotatedArgs) annotated func.resultTy
     } else {
-      throw new CsppTypeError(app.pos,
+      throw new CsppTypeError(app.loc,
         s"Wrong number of arguments to callable '${id}'. " ++
         s"Expected ${func.arity}, found ${args.length}.")
     }
@@ -127,7 +127,7 @@ object CsppTypeChecker {
     val ty = typeOf(annotated)
     if (ty != expected) {
       throw new CsppTypeError(
-        app.pos, s"Expected ${expected.toString} but found ${ty.toString}.")
+        app.loc, s"Expected ${expected.toString} but found ${ty.toString}.")
     } else {
       annotated
     }
@@ -135,14 +135,14 @@ object CsppTypeChecker {
 
   def lookupVar(env: Env, id: Ident) = env get id match {
     case Some(ty) => ty
-    case None => throw new CsppTypeError(id.pos, s"Unknown identifier '${id.name}'.")
+    case None => throw new CsppTypeError(id.loc, s"Unknown identifier '${id.name}'.")
   }
 
   def addVars(env: Env, mappings: (Ident, Function)*): Env = {
     if (mappings.isEmpty) {
       env
     } else if (env contains mappings.head._1) {
-      val pos = mappings.head._1.pos
+      val pos = mappings.head._1.loc
       val name = mappings.head._1.name
       throw new CsppTypeError(
         pos, s"Redeclaring identifier '$name' with a different type.")
@@ -151,10 +151,10 @@ object CsppTypeChecker {
     }
   }
 
-  def typeOf[T <: TypeAnnotation with Positional](elem: T) = elem.ty match {
+  def typeOf[T <: TypeAnnotation with CsppPositional](elem: T) = elem.ty match {
     case Some(ty) => ty
     case None => throw new CsppTypeError(
-      elem.pos, s"Unable to deduce type of $elem.")
+      elem.loc, s"Unable to deduce type of $elem.")
   }
 
   implicit class TypeSetBuilder(input: CsppType) {

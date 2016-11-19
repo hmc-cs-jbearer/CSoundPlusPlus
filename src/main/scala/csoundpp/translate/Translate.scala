@@ -34,18 +34,18 @@ object CsppTranslator {
   }
 
   // Get the csound type (i for init-rate, a for audio-rate, etc) of a CSPP expression
-  def csType[T <: TypeAnnotation with Positional](elem: T) = elem.ty match {
+  def csType[T <: TypeAnnotation with CsppPositional](elem: T) = elem.ty match {
     case Some(Number) | Some(Function(Number, _)) => InitRate
     case Some(_)                                  => AudioRate
     case None                                     =>
-      throw new CsppTranslateError(elem.pos, s"Untyped expression ${elem}.")
+      throw new CsppTranslateError(elem.loc, s"Untyped expression ${elem}.")
   }
 
-  def typeOf[T <: TypeAnnotation with Positional](elem: T) = elem.ty match {
+  def typeOf[T <: TypeAnnotation with CsppPositional](elem: T) = elem.ty match {
     case Some(Function(ty, _)) => ty
     case Some(ty) => ty
     case None =>
-      throw new CsppTranslateError(elem.pos, s"Untyped expression ${elem}.")
+      throw new CsppTranslateError(elem.loc, s"Untyped expression ${elem}.")
   }
 
   // Generate an instrument name that is unique to the given context

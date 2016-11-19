@@ -5,7 +5,7 @@ import scala.util.parsing.combinator._
 import scala.util.parsing.input.Positional
 import org.apache.commons.lang.StringEscapeUtils
 
-trait CsppToken extends Positional
+trait CsppToken extends CsppPositional
 
 case class IDENT(str: String) extends CsppToken
 case class NUMBER(num: Double) extends CsppToken
@@ -25,11 +25,11 @@ case class SLASH() extends CsppToken
 case class PLUS() extends CsppToken
 case class MINUS() extends CsppToken
 
-object CsppLexer extends JavaTokenParsers with RegexParsers {
+class CsppLexer(val source: CsppFile) extends JavaTokenParsers with RegexParsers {
 
-  def apply(source: String): Either[CsppLexerError, Seq[CsppToken]] = parse(tokens, source) match {
+  def run: Either[CsppLexerError, Seq[CsppToken]] = parse(tokens, source.contents) match {
     case NoSuccess(msg, next) =>
-      Left(new CsppLexerError(Location(next.pos.line, next.pos.column), msg))
+      Left(new CsppLexerError(Location(next.pos.line, next.pos.column, source.path), msg))
     case Success(result, _)   => Right(result)
   }
 
@@ -39,67 +39,71 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
     escaped.slice(1, escaped.length - 1)
   }
 
+  def located[T <: CsppPositional](p: =>Parser[T]): Parser[T] = positioned {
+    p ^^ { result => result inFile source.path }
+  }
+
   // We can't skip newlines, because they affect how comments are parsed
   override def skipWhitespace = true
   override val whiteSpace = """[ \t\r\f]+""".r
 
-  val id: Parser[CsppToken] = positioned {
+  val id: Parser[CsppToken] = located {
     """[a-zA-Z][a-zA-Z0-9_]*""".r ^^ { s => IDENT(s) }
   }
 
-  val num: Parser[CsppToken] = positioned {
+  val num: Parser[CsppToken] = located {
     floatingPointNumber <~ not("""[a-zA-Z_]""".r) ^^ { n => NUMBER(n.toDouble) }
   }
 
-  val file: Parser[CsppToken] = positioned {
+  val file: Parser[CsppToken] = located {
     stringLiteral ^^ { s => FILE(processStringLiteral(s)) }
   }
 
-  val importStmt: Parser[CsppToken] = positioned {
+  val importStmt: Parser[CsppToken] = located {
     "import" ^^^ IMPORT()
   }
 
-  val instr: Parser[CsppToken] = positioned {
+  val instr: Parser[CsppToken] = located {
     "instr" ^^^ INSTR()
   }
 
-  val lparen: Parser[CsppToken] = positioned {
+  val lparen: Parser[CsppToken] = located {
     "(" ^^^ LPAREN()
   }
 
-  val rparen: Parser[CsppToken] = positioned {
+  val rparen: Parser[CsppToken] = located {
     ")" ^^^ RPAREN()
   }
 
-  val lbrace: Parser[CsppToken] = positioned {
+  val lbrace: Parser[CsppToken] = located {
     "{" ^^^ LBRACE()
   }
 
-  val rbrace: Parser[CsppToken] = positioned {
+  val rbrace: Parser[CsppToken] = located {
     "}" ^^^ RBRACE()
   }
 
-  val comma: Parser[CsppToken] = positioned {
+  val comma: Parser[CsppToken] = located {
     "," ^^^ COMMA()
   }
 
-  val equals: Parser[CsppToken] = positioned {
+  val equals: Parser[CsppToken] = located {
     "=" ^^^ EQUALS()
   }
 
-  val star: Parser[CsppToken] = positioned {
+  val star: Parser[CsppToken] = located {
     "*" ^^^ STAR()
   }
 
-  val slash: Parser[CsppToken] = positioned {
+  val slash: Parser[CsppToken] = located {
     "/" ^^^ SLASH()
   }
 
-  val plus: Parser[CsppToken] = positioned {
+  val plus: Parser[CsppToken] = located {
     "+" ^^^ PLUS()
   }
 
-  val minus: Parser[CsppToken] = positioned {
+  val minus: Parser[CsppToken] = located {
     "-" ^^^ MINUS()
   }
 
@@ -128,4 +132,14 @@ object CsppLexer extends JavaTokenParsers with RegexParsers {
       | num
       ) <~ rep(ignore)
     ))
+}
+
+object CsppLexer {
+  def apply(source: CsppFile): Either[CsppCompileError, Seq[CsppToken]] = {
+    new CsppLexer(source).run
+  }
+
+  def apply(source: String): Either[CsppCompileError, Seq[CsppToken]] = {
+    apply(CsppFile("", source))
+  }
 }

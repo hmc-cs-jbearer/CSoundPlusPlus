@@ -19,7 +19,7 @@ class ParserSuite extends FunSuite with Matchers {
   // Assert that an input parses successfully and gives correct output.
   def testGoodInput(input: Seq[CsppToken], output: Statement) = {
     val parser = new CsppParser()
-    val reader = new CsppTokenReader(input)
+    val reader = parser.reader(input)
     val result = parser.phrase(parser.statement)(reader)
     result shouldBe 'successful
     result.get should equal (output)
@@ -27,7 +27,7 @@ class ParserSuite extends FunSuite with Matchers {
 
   def testGoodInput(input: Seq[CsppToken], output: Expr) = {
     val parser = new CsppParser()
-    val reader = new CsppTokenReader(input)
+    val reader = parser.reader(input)
     val result = parser.phrase(parser.expr)(reader)
     result shouldBe 'successful
     result.get should equal (output)
@@ -35,7 +35,7 @@ class ParserSuite extends FunSuite with Matchers {
 
   def testGoodInput(input: Seq[CsppToken], output: Ident) = {
     val parser = new CsppParser()
-    val reader = new CsppTokenReader(input)
+    val reader = parser.reader(input)
     val result = parser.phrase(parser.id)(reader)
     result shouldBe 'successful
     result.get should equal (output)
@@ -44,21 +44,21 @@ class ParserSuite extends FunSuite with Matchers {
   // Assert that an input failes to parse.
   def testBadInput[T](input: Seq[CsppToken], parser: statement.type) = {
     val parser = new CsppParser()
-    val reader = new CsppTokenReader(input)
+    val reader = parser.reader(input)
     val result = parser.phrase(parser.statement)(reader)
     result should not be 'successful
   }
 
   def testBadInput[T](input: Seq[CsppToken], parser: expr.type) = {
     val parser = new CsppParser()
-    val reader = new CsppTokenReader(input)
+    val reader = parser.reader(input)
     val result = parser.phrase(parser.expr)(reader)
     result should not be 'successful
   }
 
   def testBadInput[T](input: Seq[CsppToken], parser: ident.type) = {
     val parser = new CsppParser()
-    val reader = new CsppTokenReader(input)
+    val reader = parser.reader(input)
     val result = parser.phrase(parser.id)(reader)
     result should not be 'successful
   }
@@ -83,9 +83,11 @@ class ParserSuite extends FunSuite with Matchers {
    * Assert that a program fails to parse and that the error occurs at the specified line and
    * column.
    */
-  def testBadProgram(input: Seq[CsppToken], loc: Location) = CsppParser(input) match {
+  def testBadProgram(input: Seq[CsppToken], error: ParseError) = CsppParser(input) match {
     case Right(output)                          => fail(output.toString ++ " was successful.")
-    case Left(CsppCompileError(reportedLoc, _)) => reportedLoc should equal (loc)
+    case Left(CsppCompileError(reportedLoc, _)) => {
+      (reportedLoc.line, reportedLoc.column) should equal ((error.line, error.column))
+    }
   }
 
   implicit class ParseTester(input: Seq[CsppToken]) {
@@ -117,7 +119,7 @@ class ParserSuite extends FunSuite with Matchers {
   object program
 
   // Object used to state expectation for tests that should fail to parse
-  class ParseError(line: Int, column: Int) extends Location(line, column)
+  class ParseError(line: Int, column: Int) extends Location(line, column, "")
 
   // Syntactic sugar for 0-argument functions (ie variables)
   def Var(id: Ident) = Application(id, Seq())

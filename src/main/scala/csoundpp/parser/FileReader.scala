@@ -3,13 +3,15 @@ package cspp
 import java.io.File
 import java.nio.file.{Paths, Files}
 
+case class CsppFile(path: String, contents: String)
+
 object CsppFileReader {
 
-  def apply(p: String): Either[CsppCompileError, String] =
+  def apply(p: String): Either[CsppCompileError, CsppFile] =
     for {
       path <- absPath(p).right
       contents <- readFile(path).right
-    } yield contents + "\n" // Add a newline at the end so we can concatenate files easily
+    } yield CsppFile(path, contents + "\n") // Add a newline at the end so we can concatenate files easily
 
   def absPath(path: String): Either[CsppCompileError, String] =
     if (Files.exists(Paths.get(path))) {
