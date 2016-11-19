@@ -1,4 +1,5 @@
-# CSoundPlusPlus
+# CSoundPlusPlus [![Build Status](https://travis-ci.org/hmc-cs-jbearer/CSoundPlusPlus.svg?branch=master)](https://travis-ci.org/hmc-cs-jbearer/CSoundPlusPlus)
+
 _A high-level domain-specific language for digital sound generation._
 
 ---
