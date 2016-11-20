@@ -252,7 +252,7 @@ object CsppTranslator {
 
 
         case Effect =>
-          (context2, s"$sigName ${opcodeName(opName)} $sigName, ${argNames.mkString(", ")}", sigName)
+          (context2, s"$sigName ${opcodeName(opName)} ${(sigName +: argNames).mkString(", ")}", sigName)
       }
 
       (context3, argLines ++ Seq(callLine), outName)
