@@ -55,18 +55,11 @@ trait CsParsers extends Parsers {
    * Create a parser which uses the parser p to build up a token string by apply p zero or more
    * times until it fails.
    */
-  def tokenStringRep(p: Parser[CsToken]): Parser[CsTokenString] =
+  def tokenStringRep(p: Parser[CsToken], toks: CsTokenString = CsTokenString(Seq())): Parser[CsTokenString] =
     Parser { in =>
-
-      def extend(toks: CsTokenString, rest: Input): ParseResult[CsTokenString] = p(rest) match {
-        case ns: NoSuccess => Success(toks, rest)
-        case Success(tok, leftover) => extend(toks + tok, leftover)
-      }
-
-      val emptyString = success(CsTokenString(Seq()))
-      emptyString(in) match {
-        case Success(toks, rest) => extend(toks, rest)
-        case ns: NoSuccess => ns // Will never happen
+      p(in) match {
+        case ns: NoSuccess => Success(toks, in)
+        case Success(tok, rest) => tokenStringRep(p, toks + tok)(rest)
       }
     }
 }
