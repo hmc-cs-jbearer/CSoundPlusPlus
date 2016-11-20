@@ -10,7 +10,10 @@ install:
   - curl -s https://raw.githubusercontent.com/paulp/sbt-extras/master/sbt > ./sbt && chmod 0755 ./sbt
 
 script:
-  - ./sbt "++$SCALA_VERSION" test
+  - ./sbt "++$SCALA_VERSION" clean coverage test
+
+after_success:
+  - sbt coverageReport coveralls
 
 matrix:
   include:
