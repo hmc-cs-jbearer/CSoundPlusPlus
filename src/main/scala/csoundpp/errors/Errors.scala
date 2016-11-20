@@ -42,3 +42,7 @@ class CsppLexerError(location: Location, msg: String) extends CsppCompileError(l
 class CsppParserError(location: Location, msg: String) extends CsppCompileError(location, msg)
 class CsppTypeError(location: Location, msg: String) extends CsppCompileError(location, msg)
 class CsppTranslateError(location: Location, msg: String) extends CsppCompileError(location, msg)
+
+class CsParseError(val position: Position, val msg: String) {
+  override def toString = s"($position) $msg"
+}
