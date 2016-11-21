@@ -46,3 +46,5 @@ class CsppTranslateError(location: Location, msg: String) extends CsppCompileErr
 class CsParseError(val position: Position, val msg: String) {
   override def toString = s"($position) $msg"
 }
+
+case class CSoundError(code: Int)

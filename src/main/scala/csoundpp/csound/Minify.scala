@@ -115,6 +115,7 @@ object CsoundMinifier extends JavaTokenParsers with RegexParsers with CsParsers 
     | "+" | "-" | "*" | "/" | "^" | "="
     | "(" | ")"
     | ","
+    | "!"
     ) ^^ { NoSpaceToken(_) }
 
   def ignoreToken: Parser[CsToken] = phrase(";.*".r) ^^^ IgnoreToken
