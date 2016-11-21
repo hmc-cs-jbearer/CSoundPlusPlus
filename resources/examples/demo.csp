@@ -1,0 +1,21 @@
+/**
+ * This is a very simple program showcasing some of CSound++'s most basic features. It uses three
+ * built-in components (fm, adsr, and compress) to define a source and an effect, which are then
+ * combined in a single instrument.
+ */
+
+channel = 1
+
+my_source(amp, freq) = {
+    fm(amp, freq, 3, 2)
+    adsr(0.05, 0.1, 0.7, 0.05)
+}
+
+my_effect(threshold, ratio) = {
+    compress(threshold, threshold, ratio, 0.01, 0.1)
+}
+
+instr(channel) = {
+    my_source(amp, freq)
+    my_effect(0.6, 3)
+}
