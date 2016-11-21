@@ -83,16 +83,20 @@ object CsppTypeChecker {
 
     case app @ Application(id, args, _) => annotateApp(env, app)
 
-    case Chain(body, _) => {
-      // The type of a chain is either source or effect, based on the first component in the chain.
-      val head = assertExpr(env, body.head, Source || Effect)
-      val ty = typeOf(head)
+    case Chain(body, _) =>
+      if (body.isEmpty) {
+        // An empty chain is the boring effect that passes its input through unchanged.
+        Chain(body) annotated Effect
+      } else {
+        // The type of a chain is either source or effect, based on the first component in the chain.
+        val head = assertExpr(env, body.head, Source || Effect)
+        val ty = typeOf(head)
 
-      // Regardless of whether a chain is a source or effect, everything after the first component
-      // must be an effect.
-      val tail = body.tail.map(assertExpr(env, _, Effect))
+        // Regardless of whether a chain is a source or effect, everything after the first component
+        // must be an effect.
+        val tail = body.tail.map(assertExpr(env, _, Effect))
 
-      Chain(head +: tail, Some(ty))
+        Chain(head +: tail, Some(ty))
     }
   }
 

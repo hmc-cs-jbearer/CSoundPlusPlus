@@ -166,6 +166,12 @@ class TranslateSuite extends FunSuite with Matchers {
     )
   }
 
+  test("expression.chain.effect.empty") {
+    // When an effect is used, the identifier asig must already exist and contain the signal.
+    // Therefore, to pass the signal through unchanged, we don't have to do anything.
+    (Chain(Seq()) annotated Effect) ~> ""
+  }
+
   test("expression.chain.effect.one") {
     (Chain(Seq(astVar("effect", Effect))) annotated Effect) ~> "asig cspp_effect asig"
   }

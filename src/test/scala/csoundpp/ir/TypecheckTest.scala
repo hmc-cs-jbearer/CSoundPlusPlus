@@ -178,6 +178,10 @@ class TypecheckSuite extends FunSuite with Matchers {
       Application(Ident("foo"), Seq(Var("source"))) ~/> expr
   }
 
+  test("expression.chain.empty") {
+    env() ~> Chain(Seq()) ~> (Chain(Seq()) annotated Effect)
+  }
+
   test("expression.chain.sourceOnly") {
     val comp = Application(Ident("source"), Seq())
     val expr = Chain(Seq(comp))
