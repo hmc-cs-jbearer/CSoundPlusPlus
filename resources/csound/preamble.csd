@@ -1,3 +1,4 @@
+#! bin/csound-play
 ; This file is prepended to every compiled CSound++ program. It contains global setup code as well
 ; as CSound opcodes defining the built-in CSound++ features.
 
@@ -33,6 +34,61 @@ iamp, icar, imod, index xin
 asig foscil iamp, 1, icar, imod, index
 xout asig
 endop
+
+; filt:
+;   The common implementation for all CSound++ filter types.
+; Inputs:
+;   imode: an integer representing the type of filtering to perform.
+;       0: Resonant low-pass filter
+;       1: Resonant high-pass filter
+;       2: Band-pass filter
+;       3: Band-reject filter
+;       4: Peaking filter
+;       5: Low shelf
+;       6: High shelf
+;   ifreq: the cutoff frequency (modes 0, 1, 5, 6) or center frequency (modes 2 - 4) in Hz.
+;   ilvl: the amount of boost or cut. Must be > 0. ilvl == 1 results in a flat frequency response.
+;   iq: the filter quality (ifreq / bandwidth)
+;   is: the shelf slope for modes 5 and 6. Must be > 0. is == 1 results in the steepest possible
+;       slope without resonance. is > 1 results in resonances.
+opcode __cspp_filt, a, aiiiii
+asig, imode, ifreq, ilvl, iq, is xin
+denorm asig
+asig rbjeq asig, ifreq, ilvl, iq, is, imode * 2
+xout asig
+endop
+
+; Filter modes
+#define CSPP_FILT_LOPASS        #0#
+#define CSPP_FILT_HIPASS        #1#
+#define CSPP_FILT_BANDPASS      #2#
+#define CSPP_FILT_BANDREJECT    #3#
+#define CSPP_FILT_PEAKING       #4#
+#define CSPP_FILT_LOSHELF       #5#
+#define CSPP_FILT_HISHELF       #6#
+
+; Implementation for a low pass, high pass, band pass, or band reject filter.
+; Macro parameters:
+;   name: the name of the opcode to be generated.
+;   mode: the imode parameter of __cspp_filt.
+; Inputs:
+;   ifreq
+;   ilvl
+;   iq
+; The inputs have the same meaning as the corresponding inputs to __cspp_filt
+#define CSPP_FILT_IMPL(name' mode') #
+opcode cspp_$name, a, aiii
+asig, ifreq, ilvl, iq xin
+asig __cspp_filt asig, $mode, ifreq, ilvl, iq, 1
+xout asig
+endop
+#
+
+
+$CSPP_FILT_IMPL(lopass' $CSPP_FILT_LOPASS')
+$CSPP_FILT_IMPL(hipass' $CSPP_FILT_HIPASS')
+$CSPP_FILT_IMPL(bandpass' $CSPP_FILT_BANDPASS')
+$CSPP_FILT_IMPL(bandreject' $CSPP_FILT_BANDREJECT')
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; The following are higher-level opcodes, which are implemented in CSound but use some of CSound's
