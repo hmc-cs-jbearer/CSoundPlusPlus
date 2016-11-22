@@ -26,7 +26,10 @@ object CsppTranslator {
 
   val sigName = "asig"
 
-  def apply(ast: Seq[Statement]): Either[CsppCompileError, CsLines] = {
+  var debug = false
+
+  def apply(ast: Seq[Statement], debug: Boolean = false): Either[CsppCompileError, CsLines] = {
+    CsppTranslator.debug = debug
     try {
       val (_, lines) = translateStmts(emptyContext, ast)
       Right(lines)
@@ -83,6 +86,23 @@ object CsppTranslator {
   def extendGlobalScope(context: Context, newVars: Seq[Ident]): Context
     = context.copy(globalScope = context.globalScope ++ newVars)
 
+  abstract class LogLevel(name: String) {
+    override def toString = name
+  }
+  object DEBUG extends LogLevel("DEBUG")
+  object INFO extends LogLevel("INFO")
+  object WARNING extends LogLevel("WARNING")
+  object ERROR extends LogLevel("ERROR")
+
+  // Generate a CSound prints statement
+  def log(level: LogLevel, name: String, fmt: String, params: String*): CsLines =
+    if (debug) {
+      val fmtStr = "\"" ++ s"CSPPLOG $level name=$name $fmt" ++ "\\n\""
+      Seq("prints " ++ (fmtStr +: params).mkString(", "))
+    } else {
+      Seq()
+    }
+
   // Create a new user defined opcode
   def opcodeDefine(name: String, params: Seq[String], body: CsLines, ty: CsppType, resultTy: CsType, outVar: String): CsLines = {
     val allParams = if (ty == Effect) {
@@ -114,7 +134,8 @@ object CsppTranslator {
     s"instr ${name}" +:
     "iamp ampmidi 1" +:
     "ifreq cpsmidi" +:
-    (body ++ Seq(
+    (log(INFO, "note_on", s"instr=$name amp=%f freq=%f", "iamp", "ifreq") ++
+    body ++ Seq(
     s"out $outVar",
     "endin",
     "")) // End with a blank line just for readability

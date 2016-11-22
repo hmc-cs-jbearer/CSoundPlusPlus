@@ -20,7 +20,8 @@ case class Config(
   inFile: String = "",
   outFile: String = "",
   humanReadable: Boolean = false,
-  score: String = ""
+  score: String = "",
+  debug: Boolean = false
 )
 
 object ArgParser {
@@ -41,6 +42,12 @@ object ArgParser {
             text("generate readble CSound code (results in larger output files)").
             action { (_, c) =>
               c.copy(humanReadable = true)
+            },
+
+          opt[Unit]('d', "debug").
+            text("compile with debug information, which can be used by CSPP analysis tools").
+            action { (_, c) =>
+              c.copy(debug = true)
             },
 
           opt[String]('o', "out").

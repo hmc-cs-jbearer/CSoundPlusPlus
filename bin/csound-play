@@ -1,68 +1,12 @@
 #! /usr/bin/env python3
 
 import argparse
-import os
-import signal
-from subprocess import Popen, PIPE
 import sys
 
-class tempPath:
+print(sys.path)
 
-    def __init__(self):
-        self.path = ".cspp" + str(os.getpid())
-
-    def __enter__(self):
-        return self.path
-
-    def __exit__(self, *_):
-        os.remove(self.path)
-
-def play(programFile, scoreFile, outFile):
-
-    # Read in the program and strip the shebang from the program
-    with open(programFile) as f:
-        line = f.readline()
-        if line[0:2] == "#!":
-            line = ""
-        program = line + f.read()
-
-    # Write the processed program to a temporary file which is unique to this process
-    with tempPath() as orcFile:
-        with open(orcFile, 'w') as f:
-            f.write(program)
-
-        if os.name == "nt":
-            from subprocess import CREATE_NEW_PROCESS_GROUP
-            kwargs = {"creationflags": CREATE_NEW_PROCESS_GROUP}
-            killSig = signal.CTRL_C_EVENT
-        else:
-            kwargs = {}
-            killSig = signal.SIGINT
-
-        print(" ".join(["csound", "--orc", "-F", scoreFile, "-o", outFile, orcFile]))
-        csound = Popen(["csound", "--orc", "-F", scoreFile, "-o", outFile, orcFile],
-                       stderr=PIPE,
-                       *kwargs)
-
-        ranToCompletion = False
-
-        for line in csound.stderr:
-            line = line.decode("utf-8")[:-1] # Strip off the trailing newline
-            END_OF_SCORE = "end of midi track"
-            if line[0:len(END_OF_SCORE)] == END_OF_SCORE:
-                # CSound just hangs once the MIDI track is finished, so we have to manually kill it
-                ranToCompletion = True
-                csound.send_signal(killSig)
-            else:
-                # Echo stderr output to our error stream
-                print(line, file=sys.stderr)
-
-        csound.communicate()
-
-    if ranToCompletion:
-        return 0
-    else:
-        return csound.returncode
+from csoundpp.errors import SubprocessError
+from csoundpp.player import play
 
 if __name__ == "__main__":
 
@@ -74,4 +18,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    sys.exit(play(args.orcFile, args.scoreFile, args.outFile))
+    try:
+        for line in play(args.orcFile, args.scoreFile, args.outFile):
+            print(line)
+    except SubprocessError as e:
+        print(e)
+        sys.exit(e.code())

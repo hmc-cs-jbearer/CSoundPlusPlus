@@ -20,6 +20,19 @@ massign 0, 0
 ; be used in the implementation of library routines. They give access to CSound-level components.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; sine:
+;   A sine wave source.
+; Inputs:
+;   iamp: the amplitude of the signal, on a scale from 0 to 1
+;   ifreq: the frequency of the signal in Hz.
+; Outputs:
+;   asig: a sine wave.
+opcode cspp_sine, a, ii
+iamp, ifreq xin
+asig oscil iamp, ifreq
+xout asig
+endop
+
 ; foscil:
 ;   A basic frequency modulated source.
 ; Inputs:

@@ -109,7 +109,8 @@ object CsoundMinifier extends JavaTokenParsers with RegexParsers with CsParsers 
     ) ^^ { SpaceToken(_) }
 
   def noSpaceToken: Parser[CsToken] =
-    ( "#" // Macro definition
+    ( stringLiteral
+    | "#" // Macro definition
     | "$" // Macro expansion
     | "'" // Macro argument separator
     | "+" | "-" | "*" | "/" | "^" | "="

@@ -21,6 +21,7 @@ object CsppTypeChecker {
   def apply(ast: Seq[Statement]): Either[CsppTypeError, Seq[Statement]] = apply(
     addVars(new Env(),
       Ident("foscil") -> Function(Source, 4),
+      Ident("sine") -> Function(Source, 2),
       Ident("compress") -> Function(Effect, 5),
       Ident("adsr") -> Function(Effect, 4)
     ),

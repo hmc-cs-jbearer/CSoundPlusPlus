@@ -1,0 +1,5 @@
+/**
+ * This program demonstrates the usage of the built-in sine source.
+ */
+
+instr(1) = sine(amp, freq)

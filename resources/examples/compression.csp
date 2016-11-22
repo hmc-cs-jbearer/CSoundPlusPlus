@@ -1,0 +1,14 @@
+/**
+ * This program demonstrates the use of the built-in compress effect.
+ */
+
+loknee = 40
+hiknee = 60
+ratio = 1
+attack = 0.01
+release = 0.1
+
+instr(1) = {
+    sine(amp, freq) // Simple source, just to give us something to compress
+    compress(loknee, hiknee, ratio, attack, release)
+}

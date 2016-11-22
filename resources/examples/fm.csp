@@ -1,0 +1,17 @@
+/**
+ * This program demonstrates the usage of the built-in fm source.
+ */
+
+/**
+ * The ratio of the frequency of the carrier oscillator to the frequency of the modulator. Must be
+ * an integer, or else the output frequency will be transposed.
+ */
+ratio = 2
+
+/**
+ * The index of modulation. The larger this is, the more evenly the energy of the output signal will
+ * be distributed among the higher harmonics, resulting in a more complex timbre.
+ */
+index = 3
+
+instr(1) = fm(amp, freq, ratio, index)
