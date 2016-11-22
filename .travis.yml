@@ -1,22 +1,42 @@
+sudo: required
+dist: trusty
+
 language: java
 
 env:
-  - SCALA_VERSION=2.11.8
+  - SCALA_VERSION=2.11.8 PYTHONPATH="src/main/python:$PYTHONPATH"
 
 os:
   - osx
 
-install:
-  - curl -s https://raw.githubusercontent.com/paulp/sbt-extras/master/sbt > ./sbt && chmod 0755 ./sbt
+osx_image: xcode8.1
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then bin/osx_install.sh ; fi
+
+  # We need to give sudo an absolute path, or Linux can't find pip3
+  - PIP3PATH=`which pip3`
+  - sudo "$PIP3PATH" install --upgrade pip
+  - sudo "$PIP3PATH" install -r requirements.txt
 
 script:
-  - ./sbt "++$SCALA_VERSION" clean coverage test
+  - sbt "++$SCALA_VERSION" clean coverage test
+  - python3 -m nose -vv src/test/python/csoundpp
 
 after_success:
   - sbt coverageReport coveralls
 
 matrix:
   include:
-    - env: SCALA_VERSION=2.11.8
+    - env: SCALA_VERSION=2.11.8 PYTHONPATH="src/main/python:$PYTHONPATH"
       os: linux
       jdk: oraclejdk8
+      addons:
+        apt:
+          packages:
+            # NB: these packages only apply to the Linux build. If something changes here, it
+            # probably needs to change in the bin/osx_install.sh script as well.
+            - python3
+            - python3-nose
+            - python3-setuptools
+            - csound

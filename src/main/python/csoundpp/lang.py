@@ -6,7 +6,7 @@ def compile(file, program, *options):
     with tempPath() as programFile:
         with open(programFile, 'w') as f:
             f.write(program)
-        status = subprocess.call(['sbt', 'run compile {} {} -o {}'.format(
-            programFile, ' '.join(options), file)])
+        status = subprocess.call(['sbt "run compile {} {} -o {}"'.format(
+            programFile, ' '.join(options), file)], shell=True)
 
     assert status == 0, 'Failed to compile {}.'.format(program)

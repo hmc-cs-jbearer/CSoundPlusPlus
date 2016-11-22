@@ -1,8 +1,6 @@
 package cspp
 
-import tokens.{IMPORT,FILE}
-
-object Cspp extends App {
+import scopt.OptionParser
 
 object Cspp extends App {
   val config = ArgParser(args)
