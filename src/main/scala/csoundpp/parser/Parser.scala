@@ -100,13 +100,15 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
   }
 
   /**
-   * <expr> := { <expr>* }
+   * <expr> := mux { <expr>* } <expr>
+   *         | { <expr>* }
    *         | <expr> + <term>
    *         | <expr> - <term>
    *         | <term>
    */
   lazy val expr: PackratParser[Expr] = located {
-    ( LBRACE() ~> (expr *) <~ RBRACE() ^^ { case c => Chain(c) }
+    ( MUX() ~> (LBRACE() ~> (expr *) <~ RBRACE()) ~ expr ^^ { case es~m => Multiplexer(es, m) }
+    | LBRACE() ~> (expr *) <~ RBRACE() ^^ { case c => Chain(c) }
     | expr ~ PLUS() ~ term ^^ { case e~PLUS()~t => BinOp(e, Plus, t) }
     | expr ~ MINUS() ~ term ^^ { case e~MINUS()~t => BinOp(e, Minus, t) }
     | term
@@ -127,15 +129,19 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
 
   /**
    * <factor> := ( <expr> )
-   *           | <ident> ( <exprs> )
-   *           | <ident>
+   *           | <application>
    *           | <number>
    */
   lazy val factor: PackratParser[Expr] = located {
     ( LPAREN() ~> expr <~ RPAREN()
-    | id ~ (LPAREN() ~> repsep(expr, COMMA()) <~ RPAREN()) ^^ { case i~a => Application(i ,a) }
-    | id ^^ { i => Application(i, Seq()) }
+    | application
     | numberLiteral
+    )
+  }
+
+  def application: Parser[Application] = located {
+    ( id ~ (LPAREN() ~> repsep(expr, COMMA()) <~ RPAREN()) ^^ { case i~a => Application(i ,a) }
+    | id                                                   ^^ { case i => Application(i, Seq()) }
     )
   }
 

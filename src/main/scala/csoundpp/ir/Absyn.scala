@@ -15,16 +15,24 @@ abstract trait TypeAnnotation {
 }
 
 /**
- * <expr> := <chain> | <ident> | <arith_expr>
+ * <expr> := <mux> | <chain> | <application> | <arith_expr>
  * All expressions are annotated with an optional type. The type annotation is
  * initialized to None at parse time and then filled in in the typecheck phase.
  */
 abstract class Expr extends ASTElem with TypeAnnotation {
   def annotated(newTy: CsppType): Expr
 }
+
 case class Chain(body: Seq[Expr], ty: Option[CsppType] = None) extends Expr {
   def annotated(newTy: CsppType) = Chain(body, Some(newTy))
 }
+
+case class Multiplexer(inputs: Seq[Expr], combinator: Expr, ty: Option[CsppType] = None)
+  extends Expr
+{
+  def annotated(newTy: CsppType) = Multiplexer(inputs, combinator, Some(newTy))
+}
+
 case class Application(name: Ident, args: Seq[Expr], ty: Option[CsppType] = None) extends Expr {
   def annotated(newTy: CsppType) = Application(name, args, Some(newTy))
 }
@@ -66,10 +74,17 @@ case class Ident(name: String) extends ASTElem
  * number: a floating point constant used for parameterization of chains
  */
 abstract class CsppType
-case object Source extends CsppType
-case object Effect extends CsppType
 case object Number extends CsppType
 case class Function(resultTy: CsppType, arity: Int) extends CsppType
+
+// All sources, effects, and multiplexers are components. Sources and effects are really just
+// special multiplexers with arity 0 and 1, respectively.
+abstract class Component(val arity: Int) extends CsppType
+case object Source extends Component(0)
+case object Effect extends Component(1)
+case class Mux(override val arity: Int) extends Component(arity) {
+  require(arity > 1)
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Syntactic sugar
@@ -77,4 +92,8 @@ case class Function(resultTy: CsppType, arity: Int) extends CsppType
 
 object Ident {
     implicit def String2Ident(s: String) = Ident(s)
+}
+
+object Component {
+  def unapply(c: Component): Int = c.arity
 }

@@ -250,6 +250,71 @@ class ParserSuite extends FunSuite with Matchers {
     ) ~/> expr
   }
 
+  test("expressions.mux.varComponents") {
+    // mux { source1 source2 } average
+    Seq(MUX(), LBRACE(), IDENT("source1"), IDENT("source2"), RBRACE(), IDENT("average")) ~>
+      Multiplexer(Seq(Var("source1"), Var("source2")), Var("average"))
+  }
+
+  test("expressions.mux.chainComponents") {
+    // mux { { source1 source2 } { source3 source4 } } average
+    Seq(MUX(), LBRACE(),
+      LBRACE(), IDENT("source1"), IDENT("source2"), RBRACE(),
+      LBRACE(), IDENT("source3"), IDENT("source4"), RBRACE(),
+    RBRACE(), IDENT("average")) ~>
+    Multiplexer(
+      Seq(
+        Chain(Seq(Var("source1"), Var("source2"))),
+        Chain(Seq(Var("source3"), Var("source4")))
+      ),
+      Var("average")
+    )
+  }
+
+  test("expressions.mux.chainAndVarComponents") {
+    // mux { source1 { source2 source3 } } average
+    Seq(MUX(), LBRACE(),
+      IDENT("source1"),
+      LBRACE(), IDENT("source2"), IDENT("source3"), RBRACE(),
+    RBRACE(), IDENT("average")) ~>
+    Multiplexer(
+      Seq(
+        Var("source1"),
+        Chain(Seq(Var("source2"), Var("source3")))
+      ),
+      Var("average")
+    )
+  }
+
+  test("expressions.mux.nested") {
+    /**
+     *  mux {
+     *    mux {
+     *      source1
+     *      effect1
+     *    } mux1
+     *    source2
+     *  } mux2
+     */
+    Seq(MUX(), LBRACE(),
+      MUX(), LBRACE(),
+        IDENT("source1"), IDENT("effect1"),
+      RBRACE(), IDENT("mux1"),
+      IDENT("source2"),
+    RBRACE(), IDENT("mux2")) ~>
+    Multiplexer(Seq(
+      Multiplexer(Seq(
+        Var("source1"), Var("effect1")
+      ), Var("mux1")),
+      Var("source2")
+    ), Var("mux2"))
+  }
+
+  test("expressions.mux.invalid.noCombinator") {
+    // mux { source1 source2 }
+    Seq(MUX(), LBRACE(), IDENT("source1"), IDENT("source2"), RBRACE()) ~/> expr
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Arithmetic tests
   //////////////////////////////////////////////////////////////////////////////////////////////////

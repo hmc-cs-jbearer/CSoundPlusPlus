@@ -186,6 +186,10 @@ class LexerSuite extends FunSuite with Matchers {
     "=" ~> EQUALS()
   }
 
+  test("tokens.mux") {
+    "mux" -> MUX()
+  }
+
   test("tokens.multiline") {
     "foo\n42\n(\n)\n//comment\n=" ~> Seq(
       IDENT("foo"),
