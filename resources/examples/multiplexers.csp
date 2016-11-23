@@ -9,14 +9,17 @@
  * into a single signal.
  */
 harmonicFm(amp, freq) = {
-    {
+
+    // Each expression in this mux block represents a prallel signal chain
+    mux {
         fm(amp, freq, 2, 2)
-    }
-    {
         fm(0.7 * amp, 2 * freq, 2, 4)
     }
-    average // Combine the two preceding chains into a single signal by taking their average
 
+    // Combine the parallel chains into a single signal by taking their average
+    average
+
+    // Finally, give our source a regular serial envelope
     adsr(0.05, 0.1, 0.7, 0.05)
 }
 
@@ -46,12 +49,11 @@ instr(kickChannel) = kick(amp)
 
 // The bass is where things get interesting
 instr(bassChannel) = {
-    // The first input to the multiplexer: the bass guitar which we want to compress
-    {
+    mux {
+        // The first input to the multiplexer: the bass guitar which we want to compress
         bass(amp, freq)
-    }
-    // The second input: the signal to use to trigger the compression
-    {
+
+        // The second input: the signal to use to trigger the compression
         channel(kickChannel)
     }
 
