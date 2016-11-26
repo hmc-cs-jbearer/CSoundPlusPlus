@@ -48,8 +48,8 @@ class CsppLexer(val source: CsppFile) extends JavaTokenParsers with RegexParsers
     "instr" ^^^ INSTR()
   }
 
-  val mux: Parser[CsppToken] = located {
-    "mux" ^^^ MUX()
+  val parallel: Parser[CsppToken] = located {
+    "parallel" ^^^ PARALLEL()
   }
 
   val lparen: Parser[CsppToken] = located {
@@ -103,7 +103,7 @@ class CsppLexer(val source: CsppFile) extends JavaTokenParsers with RegexParsers
       // Keywords first
       ( importStmt
       | instr
-      | mux
+      | parallel
 
       // Then special characters
       | lparen

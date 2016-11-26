@@ -5,6 +5,7 @@ import org.scalatest.Matchers
 import scala.util.parsing.input.{Position,NoPosition}
 
 import absyn._
+import AbsynSugar._
 import tokens._
 
 // Packrat parsers get really, REALLY() pissed off if the position is not consistent. Normally the
@@ -224,6 +225,25 @@ class ParserSuite extends FunSuite with Matchers {
     ))
   }
 
+  test("expressions.chain.parallelComponent") {
+    // { foo parallel { bar baz } }
+    Seq(
+      LBRACE(),
+        IDENT("foo"),
+        PARALLEL(), LBRACE(),
+          IDENT("bar"),
+          IDENT("baz"),
+        RBRACE(),
+      RBRACE()
+    ) ~> Chain(Seq(
+      Var("foo"),
+      Parallel(Seq(
+        Var("bar"),
+        Var("baz")
+      ))
+    ))
+  }
+
   test("expressions.chain.invalid.noBraces") {
     // foo bar baz
     Seq(IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
@@ -250,69 +270,116 @@ class ParserSuite extends FunSuite with Matchers {
     ) ~/> expr
   }
 
-  test("expressions.mux.varComponents") {
-    // mux { source1 source2 } average
-    Seq(MUX(), LBRACE(), IDENT("source1"), IDENT("source2"), RBRACE(), IDENT("average")) ~>
-      Multiplexer(Seq(Var("source1"), Var("source2")), Var("average"))
+  test("expression.parallel.empty") {
+    Seq(PARALLEL(), LBRACE(), RBRACE()) ~> Parallel(Seq())
   }
 
-  test("expressions.mux.chainComponents") {
-    // mux { { source1 source2 } { source3 source4 } } average
-    Seq(MUX(), LBRACE(),
-      LBRACE(), IDENT("source1"), IDENT("source2"), RBRACE(),
-      LBRACE(), IDENT("source3"), IDENT("source4"), RBRACE(),
-    RBRACE(), IDENT("average")) ~>
-    Multiplexer(
-      Seq(
-        Chain(Seq(Var("source1"), Var("source2"))),
-        Chain(Seq(Var("source3"), Var("source4")))
-      ),
-      Var("average")
-    )
+  test("expression.parallel.one") {
+    Seq(PARALLEL(), LBRACE(), IDENT("foo"), RBRACE()) ~> Parallel(Seq(Var("foo")))
   }
 
-  test("expressions.mux.chainAndVarComponents") {
-    // mux { source1 { source2 source3 } } average
-    Seq(MUX(), LBRACE(),
-      IDENT("source1"),
-      LBRACE(), IDENT("source2"), IDENT("source3"), RBRACE(),
-    RBRACE(), IDENT("average")) ~>
-    Multiplexer(
-      Seq(
-        Var("source1"),
-        Chain(Seq(Var("source2"), Var("source3")))
-      ),
-      Var("average")
-    )
+  test("expressions.parallel.many") {
+    // parallel { foo bar baz }
+    Seq(
+      PARALLEL(), LBRACE(),
+      IDENT("foo"),
+      IDENT("bar"),
+      IDENT("baz"),
+      RBRACE()
+    ) ~> Parallel(Seq(
+      Application(Ident("foo"), Seq()),
+      Application(Ident("bar"), Seq()),
+      Application(Ident("baz"), Seq())
+    ))
   }
 
-  test("expressions.mux.nested") {
-    /**
-     *  mux {
-     *    mux {
-     *      source1
-     *      effect1
-     *    } mux1
-     *    source2
-     *  } mux2
-     */
-    Seq(MUX(), LBRACE(),
-      MUX(), LBRACE(),
-        IDENT("source1"), IDENT("effect1"),
-      RBRACE(), IDENT("mux1"),
-      IDENT("source2"),
-    RBRACE(), IDENT("mux2")) ~>
-    Multiplexer(Seq(
-      Multiplexer(Seq(
-        Var("source1"), Var("effect1")
-      ), Var("mux1")),
-      Var("source2")
-    ), Var("mux2"))
+  test("expression.parallel.oneWithArgs") {
+    // parallel { foo(42, 43, 44) }
+    Seq(
+      PARALLEL(), LBRACE(),
+        IDENT("foo"), LPAREN(),
+          NUMBER(42), COMMA(),
+          NUMBER(43), COMMA(),
+          NUMBER(44),
+        RPAREN(),
+      RBRACE()
+    ) ~> Parallel(Seq(Application(Ident("foo"), Seq(Num(42), Num(43), Num(44)))))
   }
 
-  test("expressions.mux.invalid.noCombinator") {
-    // mux { source1 source2 }
-    Seq(MUX(), LBRACE(), IDENT("source1"), IDENT("source2"), RBRACE()) ~/> expr
+  test("expression.parallel.manyWithArgs") {
+    // parallel { foo(42) bar(43) baz(42, 43) }
+    Seq(
+      PARALLEL(), LBRACE(),
+        IDENT("foo"), LPAREN(), NUMBER(42), RPAREN(),
+        IDENT("bar"), LPAREN(), NUMBER(43), RPAREN(),
+        IDENT("baz"), LPAREN(),
+          NUMBER(42), COMMA(),
+          NUMBER(43),
+        RPAREN(),
+      RBRACE()
+    ) ~> Parallel(Seq(
+      Application(Ident("foo"), Seq(Num(42))),
+      Application(Ident("bar"), Seq(Num(43))),
+      Application(Ident("baz"), Seq(Num(42), Num(43)))
+    ))
+  }
+
+  test("expressions.parallel.mixedArgs") {
+    // parallel { foo bar(41) }
+    Seq(
+      PARALLEL(), LBRACE(),
+        IDENT("foo"),
+        IDENT("bar"), LPAREN(), NUMBER(41), RPAREN(),
+      RBRACE()
+    ) ~> Parallel(Seq(
+      Application(Ident("foo"), Seq()),
+      Application(Ident("bar"), Seq(Num(41)))
+    ))
+  }
+
+  test("expressions.parallel.chainComponent") {
+    // parallel { foo {bar baz} }
+    Seq(
+      PARALLEL(), LBRACE(),
+        IDENT("foo"),
+        LBRACE(),
+          IDENT("bar"),
+          IDENT("baz"),
+        RBRACE(),
+      RBRACE()
+    ) ~> Parallel(Seq(
+      Var("foo"),
+      Chain(Seq(
+        Var("bar"),
+        Var("baz")
+      ))
+    ))
+  }
+
+  test("expressions.parallel.invalid.noBraces") {
+    // parallel foo bar baz
+    Seq(PARALLEL(), IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
+  }
+
+  test("expressions.parallel.invalid.unmatchedLBrace") {
+    // parallel { foo bar baz
+    Seq(PARALLEL(), LBRACE(), IDENT("foo"), IDENT("bar"), IDENT("baz")) ~/> expr
+  }
+
+  test("expressions.parallel.invalid.unmatchedRBrace") {
+    // parallel foo bar baz }
+    Seq(PARALLEL(), IDENT("foo"), IDENT("bar"), IDENT("baz"), RBRACE()) ~/> expr
+  }
+
+  test("expressions.parallel.invalid.commas") {
+    // parallel { foo, bar, baz }
+    Seq(
+      PARALLEL(), LBRACE(),
+        IDENT("foo"), COMMA(),
+        IDENT("bar"), COMMA(),
+        IDENT("baz"),
+      RBRACE()
+    ) ~/> expr
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////

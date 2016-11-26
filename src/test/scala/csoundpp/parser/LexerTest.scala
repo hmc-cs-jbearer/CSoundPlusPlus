@@ -186,8 +186,8 @@ class LexerSuite extends FunSuite with Matchers {
     "=" ~> EQUALS()
   }
 
-  test("tokens.mux") {
-    "mux" -> MUX()
+  test("tokens.parallel") {
+    "parallel" -> PARALLEL()
   }
 
   test("tokens.multiline") {

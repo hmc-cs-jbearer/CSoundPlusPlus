@@ -27,10 +27,10 @@ case class Chain(body: Seq[Expr], ty: Option[CsppType] = None) extends Expr {
   def annotated(newTy: CsppType) = Chain(body, Some(newTy))
 }
 
-case class Multiplexer(inputs: Seq[Expr], combinator: Expr, ty: Option[CsppType] = None)
+case class Parallel(body: Seq[Expr], ty: Option[CsppType] = None)
   extends Expr
 {
-  def annotated(newTy: CsppType) = Multiplexer(inputs, combinator, Some(newTy))
+  def annotated(newTy: CsppType) = Parallel(body, Some(newTy))
 }
 
 case class Application(name: Ident, args: Seq[Expr], ty: Option[CsppType] = None) extends Expr {
@@ -79,21 +79,18 @@ case class Function(resultTy: CsppType, arity: Int) extends CsppType
 
 // All sources, effects, and multiplexers are components. Sources and effects are really just
 // special multiplexers with arity 0 and 1, respectively.
-abstract class Component(val arity: Int) extends CsppType
-case object Source extends Component(0)
-case object Effect extends Component(1)
-case class Mux(override val arity: Int) extends Component(arity) {
-  require(arity > 1)
-}
+case class Component(inArity: Int, outArity: Int) extends CsppType
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Syntactic sugar
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-object Ident {
-    implicit def String2Ident(s: String) = Ident(s)
-}
+object AbsynSugar {
+  implicit def string2Ident(s: String) = Ident(s)
 
-object Component {
-  def unapply(c: Component): Int = c.arity
+  // Source is an alias for a component with no input and one output
+  object Source extends Component(0, 1)
+
+  // Effect is an alias for a component with one input and one output
+  object Effect extends Component(1, 1)
 }

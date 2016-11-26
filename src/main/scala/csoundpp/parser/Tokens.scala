@@ -13,7 +13,7 @@ case class FILE(str: String) extends CsppToken
 // Sadly, these must all be case classes (not objects) because they have a mutable position field
 case class IMPORT() extends CsppToken
 case class INSTR() extends CsppToken
-case class MUX() extends CsppToken
+case class PARALLEL() extends CsppToken
 case class LPAREN() extends CsppToken
 case class RPAREN() extends CsppToken
 case class LBRACE() extends CsppToken

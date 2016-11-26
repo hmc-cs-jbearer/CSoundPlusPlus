@@ -100,14 +100,14 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
   }
 
   /**
-   * <expr> := mux { <expr>* } <expr>
+   * <expr> := parallel { <expr>* }
    *         | { <expr>* }
    *         | <expr> + <term>
    *         | <expr> - <term>
    *         | <term>
    */
   lazy val expr: PackratParser[Expr] = located {
-    ( MUX() ~> (LBRACE() ~> (expr *) <~ RBRACE()) ~ expr ^^ { case es~m => Multiplexer(es, m) }
+    ( PARALLEL() ~> (LBRACE() ~> (expr *) <~ RBRACE()) ^^ { case es => Parallel(es) }
     | LBRACE() ~> (expr *) <~ RBRACE() ^^ { case c => Chain(c) }
     | expr ~ PLUS() ~ term ^^ { case e~PLUS()~t => BinOp(e, Plus, t) }
     | expr ~ MINUS() ~ term ^^ { case e~MINUS()~t => BinOp(e, Minus, t) }
