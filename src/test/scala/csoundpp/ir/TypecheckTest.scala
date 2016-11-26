@@ -5,6 +5,7 @@ import org.scalatest.FunSuite
 import org.scalatest.Matchers
 
 import absyn._
+import AbsynSugar._
 import tokens._
 
 class TypecheckSuite extends FunSuite with Matchers {
@@ -27,7 +28,11 @@ class TypecheckSuite extends FunSuite with Matchers {
   def Assign(id: Ident, body: Expr) = Assignment(id, Seq(), body)
 
   def tryGoodElement[T](env: Env, input: T, expected: T, annotator: (Env, T) => T) = {
-    annotator(env, input) should equal (expected)
+    try {
+      annotator(env, input) should equal (expected)
+    } catch {
+      case e: CsppCompileError => fail(e.toString + "\n" + e.getStackTrace.mkString("\n"))
+    }
   }
 
   def tryBadElement[T](env: Env, input: T, expected: TypeError, annotator: (Env, T) => T) = {
@@ -222,6 +227,83 @@ class TypecheckSuite extends FunSuite with Matchers {
     env("var" -> Number) ~> Chain(Seq(Var(Ident("var")))) ~/> expr
   }
 
+  test("expression.parallel.empty") {
+    env() ~> Parallel(Seq()) ~> (Parallel(Seq()) annotated Effect)
+  }
+
+  test("expression.parallel.sourceOnly") {
+    val comp = Application(Ident("source"), Seq())
+    val expr = Parallel(Seq(comp))
+    val annotated = Parallel(Seq(comp annotated Source)) annotated Source
+    env("source" -> Source) ~> expr ~> annotated
+  }
+
+  test("expression.parallel.effectOnly") {
+    val comp = Application(Ident("effect"), Seq())
+    val expr = Parallel(Seq(comp))
+    val annotated = Parallel(Seq(comp annotated Effect)) annotated Effect
+    env("effect" -> Effect) ~> expr ~> annotated
+  }
+
+  test("expression.parallel.sourceAndEffect") {
+    val source = Application(Ident("source"), Seq())
+    val effect = Application(Ident("effect"), Seq())
+    val expr = Parallel(Seq(source, effect))
+    val annotated =
+      Parallel(Seq(source annotated Source, effect annotated Effect)) annotated Component(1, 2)
+    env("source" -> Source, "effect" -> Effect) ~> expr ~> annotated
+  }
+
+  test("expression.parallel.twoSource") {
+    val source1 = Application(Ident("source1"), Seq())
+    val source2 = Application(Ident("source2"), Seq())
+    val input = Parallel(Seq(source1, source2))
+    val annotated =
+      Parallel(Seq(source1 annotated Source, source2 annotated Source)) annotated Component(0, 2)
+    env("source1" -> Source, "source2" -> Source) ~> input ~> annotated
+  }
+
+  test("expression.parallel.effectAndSource") {
+    val source = Application(Ident("source"), Seq())
+    val effect = Application(Ident("effect"), Seq())
+    val input = Parallel(Seq(effect, source))
+    val annotated =
+      Parallel(Seq(effect annotated Effect, source annotated Source)) annotated Component(1, 2)
+    env("source" -> Source, "effect" -> Effect) ~> input ~> annotated
+  }
+
+  test("expression.parallel.twoEffect") {
+    val effect1 = Application(Ident("effect1"), Seq())
+    val effect2 = Application(Ident("effect2"), Seq())
+    val input = Parallel(Seq(effect1, effect2))
+    val annotated =
+      Parallel(Seq(effect1 annotated Effect, effect2 annotated Effect)) annotated Component(2, 2)
+    env("effect1" -> Effect, "effect2" -> Effect) ~> input ~> annotated
+  }
+
+  test("expression.parallel.effectsAndSources") {
+    val source1 = Application(Ident("source1"), Seq())
+    val source2 = Application(Ident("source2"), Seq())
+    val effect1 = Application(Ident("effect1"), Seq())
+    val effect2 = Application(Ident("effect2"), Seq())
+    val input = Parallel(Seq(source1, source2, effect1, effect2))
+    val annotated =
+      Parallel(Seq(
+        source1 annotated Source,
+        source2 annotated Source,
+        effect1 annotated Effect,
+        effect2 annotated Effect)
+      ) annotated Component(2, 4)
+    env("source1" -> Source,
+        "source2" -> Source,
+        "effect1" -> Effect,
+        "effect2" -> Effect) ~> input ~> annotated
+  }
+
+  test("expression.parallel.invalid.number") {
+    env("var" -> Number) ~> Parallel(Seq(Var(Ident("var")))) ~/> expr
+  }
+
   test("expression.binop.numbers") {
     val lhs = Num(42)
     val rhs = Num(1)
@@ -266,6 +348,16 @@ class TypecheckSuite extends FunSuite with Matchers {
     val stmt = Assign(Ident("foo"), expr)
     val annotated = Assign(Ident("foo"), Chain(Seq(comp annotated Source)) annotated Source)
     env("source" -> Source) ~> stmt ~> annotated
+  }
+
+  test("statement.assignment.parallel") {
+    val source1 = Application(Ident("source1"), Seq())
+    val source2 = Application(Ident("source2"), Seq())
+    val expr = Parallel(Seq(source1, source2))
+    val stmt = Assign(Ident("foo"), expr)
+    val annotated = Assign(Ident("foo"), Parallel(Seq(
+      source1 annotated Source, source2 annotated Source)) annotated Component(0, 2))
+    env("source1" -> Source, "source2" -> Source) ~> stmt ~> annotated
   }
 
   test("statement.assignment.chainWithParams") {
@@ -416,6 +508,26 @@ class TypecheckSuite extends FunSuite with Matchers {
     env() ~> instr ~/> statement
   }
 
+  test("statement.instrument.invalid.manyOuts") {
+    val channel = Num(1)
+    val body = Parallel(Seq(Var("source1"), Var("source2")))
+    val instr = Instrument(Seq(channel), body)
+    env("source1" -> Source, "source2" -> Source) ~> instr ~/> statement
+  }
+
+  test("statement.instrument.invalid.oneInOneOut") {
+    val channel = Num(1)
+    val body = Parallel(Seq(Var("effect1")))
+    val instr = Instrument(Seq(channel), body)
+    env("effect1" -> Effect) ~> instr ~/> statement
+  }
+
+  test("statement.instrument.invalid.oneInTwoOut") {
+    val channel = Num(1)
+    val body = Parallel(Seq(Var("source1"), Var("effect1")))
+    val instr = Instrument(Seq(channel), body)
+    env("source1" -> Source, "effect1" -> Effect) ~> instr ~/> statement
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Program tests

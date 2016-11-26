@@ -4,6 +4,7 @@ import scala.collection.immutable.{HashMap,HashSet}
 import scala.util.parsing.input.Positional
 
 import absyn._
+import AbsynSugar._
 
 object CsppTypeChecker {
 
@@ -59,7 +60,8 @@ object CsppTypeChecker {
     }
 
     case Instrument(channels, expr) => {
-      val annotatedChannels = channels.map(assertExpr(env, _: Expr, Number))
+      val annotatedChannels = channels.map(
+        assertExpr(env, _: Expr, "number", { case Number => () })._1)
 
       // Bind MIDI params (freq, amp, etc) to Numbers in the body of the instrument
       val paramTy = Function(Number, 0)
@@ -68,7 +70,7 @@ object CsppTypeChecker {
         Ident("amp") -> paramTy
       )
 
-      val annotatedBody = assertExpr(localEnv, expr, Source)
+      val (annotatedBody, _) = assertExpr(localEnv, expr, "source", { case Source => () })
 
       // We return the old env, because the new identifiers are only in scope within the instrument
       (env, Instrument(annotatedChannels, annotatedBody))
@@ -79,8 +81,11 @@ object CsppTypeChecker {
   def annotateExpr(env: Env, expr: Expr): Expr = expr match {
     case n: Num => n annotated Number
 
-    case BinOp(l, op, r, _) =>
-      BinOp(assertExpr(env, l, Number), op, assertExpr(env, r, Number)) annotated Number
+    case BinOp(l, op, r, _) => {
+      val (annotatedLeft, _) = assertExpr(env, l, "number", { case Number => () })
+      val (annotatedRight, _) = assertExpr(env, r, "number", { case Number => () })
+      BinOp(annotatedLeft, op, annotatedRight) annotated Number
+    }
 
     case app @ Application(id, args, _) => annotateApp(env, app)
 
@@ -89,36 +94,63 @@ object CsppTypeChecker {
         // An empty chain is the boring effect that passes its input through unchanged.
         Chain(body) annotated Effect
       } else {
-        // The type of a chain is either source or effect, based on the first component in the chain.
-        val head = assertExpr(env, body.head, Source || Effect)
-        val ty = typeOf(head)
+        val (head, (inArity, headOutArity)) =
+          assertExpr(env, body.head, "component", { case Component(in, out) => (in, out) })
 
-        // Regardless of whether a chain is a source or effect, everything after the first component
-        // must be an effect.
-        val tail = body.tail.map(assertExpr(env, _, Effect))
+        val tail = assertComponents(env, body.tail, headOutArity)
 
-        Chain(head +: tail, Some(ty))
+        val (_, outArity) = assertExpr(env, (head +: tail).last, "component",
+                                       { case Component(_, out) => out })
+
+        Chain(head +: tail) annotated Component(inArity, outArity)
+    }
+
+    case Parallel(body, _) => {
+      // Annotate the inputs, and compute the arity
+      val (annotatedInputs, arities) =
+        body.map(assertExpr(env, _, "component", { case Component(in, out) => (in, out) })).unzip
+
+      val (inArities, outArities) = arities.unzip
+
+      val (inArity, outArity) = if (body.isEmpty) {
+        // An empty parallel block is treated the same as an empty chain: a trivial effect
+        (1, 1)
+      } else {
+        (inArities.sum, outArities.sum)
+      }
+
+      Parallel(annotatedInputs) annotated Component(inArity, outArity)
     }
   }
 
-  def assertExpr(env: Env, expr: Expr, expected: CsppType): Expr =
-    assertExpr(env, expr, new HashSet() + expected)
+  def assertComponents(env: Env, body: Seq[Expr], inArity: Int): Seq[Expr] =
+    if (body.isEmpty) {
+      Seq()
+    } else {
+      val (head, headOutArity) = assertExpr(
+        env, body.head, s"component with $inArity inputs",
+        { case Component(in, out) if in == inArity => out })
 
-  def assertExpr(env: Env, expr: Expr, expected: Set[CsppType]): Expr = {
+      val tail = assertComponents(env, body.tail, headOutArity)
+
+      head +: tail
+    }
+
+  def assertExpr[T](env: Env, expr: Expr, expected: String, f: PartialFunction[CsppType, T]) = {
     val annotated = annotateExpr(env, expr)
     val ty = typeOf(annotated)
-    if (expected contains ty) {
-      annotated
+    if (f isDefinedAt ty) {
+      (annotated, f(ty))
     } else {
       throw new CsppTypeError(
-        expr.loc, s"Expected ${expected.toString} but found ${ty.toString}.")
+        expr.loc, s"Expected ${expected} but found ${ty}.")
     }
   }
 
   def annotateApp(env: Env, app: Application): Application = {
     val id = app.name
     val args = app.args
-    val annotatedArgs = args.map(assertExpr(env, _, Number))
+    val annotatedArgs = args.map(assertExpr(env, _, "number", { case Number => () })._1)
     val func = lookupVar(env, id)
     if (func.arity == args.length) {
       Application(id, annotatedArgs) annotated func.resultTy
