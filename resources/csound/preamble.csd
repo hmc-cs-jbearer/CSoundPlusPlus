@@ -108,7 +108,41 @@ $CSPP_FILT_IMPL(bandreject' $CSPP_FILT_BANDREJECT')
 ; higher-level features, and are intended for use directly by the user.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; fm:
+; sidechain_compress:
+;   An effect which compresses the dynamic range of one signal based on the amplitude of a different
+;   signal.
+; Inputs:
+;   asig: the signal to compress
+;   acmp: the signal to trigger compression
+;   iloknee: the threshold (0 to 1) at which to begin compression. Or, the highest input amplitude
+;       for which the slope of the compression function is 1.
+;   ihiknee: the threshold (0 to 1) at which the slope of the compression function is first equal
+;       to 1 / iratio.
+;   iratio: the compression ratio. This is the denominator of the slope of the compression funciton
+;       above ihiknee.
+;   iatt: the attack time in seconds.
+;   irel: the release time in seconds.
+; Outputs:
+;   asig: the resulting signal.
+opcode cspp_sidechain_compress, a, aaiiiii
+asig, acmp, iloknee, ihiknee, iratio, iatt, irel xin
+
+; The lowest level which will be allowed through the compressor. If set above 0, the compressor
+; starts to act as a noise reducer as well. We just want this opcode to be a compressor, so we set
+; the threshold to 0.
+ithresh = 0
+
+; The lookahead time of the compressor. This is an implementation detail and so is hidden from the
+; user. There is a tradeoff between small values, which result in small delays between input and
+; output, and large values, which improve the performance of the peak detection. 0.05 is the value
+; recommended by the CSound documentation (http://www.csounds.com/manual/html/compress.html).
+ilook = 0.05
+
+asig compress asig, acmp, ithresh, iloknee, ihiknee, iratio, iatt, irel, ilook
+xout asig
+endop
+
+; compress:
 ;   A basic compressor.
 ; Inputs:
 ;   asig: the signal to compress
@@ -124,19 +158,7 @@ $CSPP_FILT_IMPL(bandreject' $CSPP_FILT_BANDREJECT')
 ;   asig: the resulting signal.
 opcode cspp_compress, a, aiiiii
 asig, iloknee, ihiknee, iratio, iatt, irel xin
-
-; The lowest level which will be allowed through the compressor. If set above 0, the compressor
-; starts to act as a noise reducer as well. We just want this opcode to be a compressor, so we set
-; the threshold to 0.
-ithresh = 0
-
-; The lookahead time of the compressor. This is an implementation detail and so is hidden from the
-; user. There is a tradeoff between small values, which result in small delays between input and
-; output, and large values, which improve the performance of the peak detection. 0.05 is the value
-; recommended by the CSound documentation (http://www.csounds.com/manual/html/compress.html).
-ilook = 0.05
-
-asig compress asig, asig, ithresh, iloknee, ihiknee, iratio, iatt, irel, ilook
+asig cspp_sidechain_compress asig, asig, iloknee, ihiknee, iratio, iatt, irel
 xout asig
 endop
 
