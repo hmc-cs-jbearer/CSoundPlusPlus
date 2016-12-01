@@ -1,0 +1,61 @@
+/**
+ * This example showcases parallel chains, an advanced feature of CSound++.
+ */
+
+/**
+ * This source creates two parallel signal chains, each with an fm source at a different frequency.
+ * It then uses the built-in average component to mix the two parallel signals into a single output.
+ */
+harmonicFm(amp, freq) = {
+
+    // Each expression in this parallel block represents a prallel signal chain
+    parallel {
+        fm(amp, freq, 2, 2)
+        fm(0.7 * amp, 2 * freq, 2, 4)
+    }
+
+    // Combine the parallel chains into a single signal by taking their average
+    average
+
+    // Finally, give our source a regular serial envelope
+    adsr(0.05, 0.1, 0.7, 0.05)
+}
+
+/**
+ * The code below is an example of using parallel chains to achieve sidechain compression. It also
+ * uses the channel source to capture the output of one instrument and use it as a source in
+ * another. The situation is this: suppose we have a kick drum and a bass guitar. We want the kick
+ * to pop a little bit more, so we want to cut the bass slightly whenever the kick hits. To do this,
+ * we apply a compressor to the bass, but use the output of the kick to trigger the compressor. In
+ * our implementation, the compressor is a component which takes two inputs: the signal to compress
+ * and the signal to trigger the compression. These two inputs are described as two signal chains in
+ * parallel.
+ */
+
+kickChannel = 1
+bassChannel = 2
+
+kick(amp) = {
+    // Code for a kick drum synth goes here
+}
+
+bass(amp, freq) = {
+    // Code for a bass guitar synth goes here
+}
+
+// We set up the kick drum exactly the same as any other instrument
+instr(kickChannel) = kick(amp)
+
+// The bass is where things get interesting
+instr(bassChannel) = {
+    parallel {
+        // The first input to the compressor: the bass guitar which we want to compress
+        bass(amp, freq)
+
+        // The second input: the signal to use to trigger the compression
+        channel(kickChannel)
+    }
+
+    // The 2-input version of compress works just like the one-signal version
+    compress(0.6, 0.6, 1.5, 0.01, 0.1)
+}
