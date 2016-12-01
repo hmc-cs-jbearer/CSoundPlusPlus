@@ -4,34 +4,39 @@ import scala.collection.immutable.HashSet
 import scala.util.parsing.input.Positional
 
 import absyn._
-
-abstract class CsType(val typeId: Char) {
-  override def toString = typeId.toString
-}
-
-object InitRate extends CsType('i')
-object AudioRate extends CsType('a')
-
-// Keeps track of how many things (local variables etc) have been created.
-// This allows us to always generate unique names.
-case class Context(locals: Int, instrs: Int, localScope: HashSet[Ident], globalScope: HashSet[Ident])
-
-// instr 0 is reserved in CSound, so we have to start out with 1 instrument
-object emptyContext extends Context(0, 1, HashSet(), HashSet())
+import AbsynSugar._
+import CsppDagNodes._
 
 object CsppTranslator {
+
+  abstract class CsType(val typeId: Char) {
+    override def toString = typeId.toString
+  }
+
+  object InitRate extends CsType('i')
+  object AudioRate extends CsType('a')
+
+  // Keeps track of how many things (local variables etc) have been created.
+  // This allows us to always generate unique names.
+  case class Context(locals: Int,                 // Number of i-rate variables in scope
+                     instrs: Int,                 // Number of instrument definitions
+                     localScope: HashSet[Ident],  // Named local variables (as opposed to anonymous
+                                                  // variables of the form i1, i2, etc)
+                     globalScope: HashSet[Ident]) // Named global variables
+
+  // instr 0 is reserved in CSound, so we have to start out with 1 instrument
+  object EmptyContext extends Context(0, 1, HashSet(), HashSet())
+
 
   type CsLine = String
   type CsLines = Seq[CsLine]
 
-  val sigName = "asig"
-
   var debug = false
 
-  def apply(ast: Seq[Statement], debug: Boolean = false): Either[CsppCompileError, CsLines] = {
+  def apply(dag: Seq[StmtNode], debug: Boolean = false): Either[CsppCompileError, CsLines] = {
     CsppTranslator.debug = debug
     try {
-      val (_, lines) = translateStmts(emptyContext, ast)
+      val (_, lines) = translateStmtNodes(EmptyContext, dag)
       Right(lines)
     } catch {
       case e: CsppTranslateError => Left(e)
@@ -46,11 +51,15 @@ object CsppTranslator {
       throw new CsppTranslateError(elem.loc, s"Untyped expression ${elem}.")
   }
 
-  def typeOf[T <: TypeAnnotation with CsppPositional](elem: T) = elem.ty match {
-    case Some(Function(ty, _)) => ty
-    case Some(ty) => ty
-    case None =>
-      throw new CsppTranslateError(elem.loc, s"Untyped expression ${elem}.")
+  def typeOf[T <: TypeAnnotation with CsppPositional](elem: T): CsppType = elem match {
+    case CompNode(_, _, expr) => typeOf(expr)
+
+    case _ => elem.ty match {
+      case Some(Function(ty, _)) => ty
+      case Some(ty) => ty
+      case None =>
+        throw new CsppTranslateError(elem.loc, s"Untyped expression ${elem}.")
+    }
   }
 
   // Generate an instrument name that is unique to the given context
@@ -103,30 +112,56 @@ object CsppTranslator {
       Seq()
     }
 
-  // Create a new user defined opcode
-  def opcodeDefine(name: String, params: Seq[String], body: CsLines, ty: CsppType, resultTy: CsType, outVar: String): CsLines = {
-    val allParams = if (ty == Effect) {
-      // Effects have an extra input parameter, the arate signal to modify
-      sigName +: params.map(localName(_))
+  /**
+   * Create a new user defined opcode which implements a CSound++ component. The opcode may have one
+   * or more a-rate inputs, and will produce at least one a-rate output.
+   */
+  def component(name: String,
+                inputs: Seq[String],
+                params: Seq[String],
+                body: CsLines,
+                outVars: Seq[String]): CsLines = {
+
+    require(outVars.length > 0)
+
+    // Generate variables to hold the input signals, of the form a1, a2, etc.
+    val allParams = inputs ++ params.map(localName(_))
+
+    val inTys = "a" * inputs.length + "i" * params.length
+    val outTys = "a" * outVars.length
+
+    // The lines to declare the opcode and accept inputs via xin
+    val init = if (allParams.isEmpty) {
+      Seq(s"opcode $name, $outTys, 0")
     } else {
-      params.map(localName(_))
+      Seq(s"opcode $name, $outTys, $inTys", s"${allParams.mkString(", ")} xin")
     }
 
-    val (paramTypes, xin) = if (allParams.isEmpty) {
-      ("0", // CSound's way of saying there are no input params
-       "")
+    init ++
+    body ++ Seq(
+    s"xout ${outVars.mkString(", ")}",
+    "endop",
+    "") // End with a blank line just for readability
+  }
+
+  /**
+   * Create a new user defined opcode which implemets a CSound++ scalar-valued function. All inputs
+   * must be i-rate, and the opcode will output exactly one i-rate value.
+   */
+  def function(name: String, params: Seq[String], body: CsLines, outVar: String): CsLines = {
+    // The lines to declare the opcode and accept inputs via xin
+    val init = if (params.isEmpty) {
+      Seq(s"opcode $name, i, 0")
     } else {
-      // The type of the params is the first character of their name
-      (allParams.map((param: String) => param(0)).mkString,
-       allParams.mkString(", ") ++ " xin")
+      Seq(s"opcode $name, i, ${"i" * params.length}",
+          params.map(localName(_)).mkString(",") + " xin")
     }
 
-    s"opcode ${name}, ${resultTy}, $paramTypes" +:
-    xin +:
-    (body ++ Seq(
+    init ++
+    body ++ Seq(
     s"xout $outVar",
     "endop",
-    "")) // End with a blank line just for readability
+    "") // End with a blank line just for readability
   }
 
   // Create a new instrument
@@ -140,32 +175,44 @@ object CsppTranslator {
     "endin",
     "")) // End with a blank line just for readability
 
-  def translateStmts(context: Context, stmts: Seq[Statement]): (Context, CsLines) =
-    if (stmts.isEmpty) {
+  def translateStmtNodes(context: Context, nodes: Seq[StmtNode]): (Context, CsLines) =
+    if (nodes.isEmpty) {
       (context, Seq())
     } else {
-      val (context2, headLines) = translateStmt(context, stmts.head)
-      val (context3, tailLines) = translateStmts(context2, stmts.tail)
+      val (context2, headLines) = translateStmtNode(context, nodes.head)
+      val (context3, tailLines) = translateStmtNodes(context2, nodes.tail)
       (context3, headLines ++ tailLines)
     }
 
-  def translateStmt(context: Context, stmt: Statement): (Context, CsLines) = stmt match {
-    case Assignment(id, params, expr) => {
+  def translateStmtNode(context: Context, node: StmtNode): (Context, CsLines) = node match {
+    case AssignNode(inputs, outputs, Assignment(id, params, expr)) => {
       val localContext = extendLocalScope(context, params)
+
+      val name = opcodeName(id)
+      val paramNames = params.map(_.name)
 
       // We ignore the context we get out, because any locals defined in this body go out of scope
       // at the end of the opcode definition. Thus, we can reuse their names in the next statement.
-      val (_, body, outName) = translateExpr(localContext, expr)
-      (context, opcodeDefine(
-        opcodeName(id), params.map((param: Ident) => param.name), body, typeOf(expr), csType(expr), outName))
+      val (_, body, scalarOutputs) = translateExpr(localContext, expr)
+
+      val opcodeLines = typeOf(expr) match {
+        case _: Component => component(name, inputs, paramNames, body, outputs)
+        case _            => function(name, paramNames, body, scalarOutputs.head)
+      }
+
+      (context, opcodeLines)
     }
 
-    case Instrument(channels, expr) => {
+    case InstrNode(inputs, outputs, Instrument(channels, expr)) => {
+      require(inputs.length == 0)
+      require(outputs.length == 1)
+      val outName = outputs.head
+
       val (context2, instrId) = instrName(context)
       val localContext = extendLocalScope(context2, Seq(Ident("freq"), Ident("amp")))
 
       // We ignore the final context for the same reason as above
-      val (_, body, outName) = translateExpr(localContext, expr)
+      val (_, body, _) = translateExpr(localContext, expr)
 
       val instrLines = instrDefine(instrId, body, outName)
       val (context3, channelLines) = translateChannels(context2, instrId, channels)
@@ -178,73 +225,92 @@ object CsppTranslator {
     if (channels.isEmpty) {
       (context, Seq("")) // Empty line for readability
     } else {
-      val (context2, channelLines, channelVar) = translateExpr(context, channels.head)
-      val mapLines = channelLines ++ Seq(s"massign $channelVar, $instrId")
+      val (context2, channelLines, channelVars) = translateExpr(context, channels.head)
+      require(channelVars.length == 1)
+      val mapLines = channelLines ++ Seq(s"massign ${channelVars.head}, $instrId")
       val (context3, restLines) = translateChannels(context2, instrId, channels.tail)
       (context3, mapLines ++ restLines)
     }
   }
 
-  // Generate code to store the value of expr in a local variable.
-  def translateExpr(context: Context, expr: Expr): (Context, CsLines, String) = expr match {
+  /**
+   * Generate code to store the value of expr in one or more local variables.
+   * This function simply allocates any necessary local variables to store the output and delegates
+   * to the overload below.
+   */
+  def translateExpr(context: Context, expr: Expr): (Context, CsLines, Seq[String]) = expr match {
     case Num(n, _) => {
-      val (context2, localVar) = localAnon(context)
-      (context2, Seq(s"$localVar = $n"), localVar)
+      val (context2, outVar) = localAnon(context)
+      (context2, Seq(s"$outVar = $n"), Seq(outVar))
     }
 
     case BinOp(l, op, r, _) => {
-      val (context2, leftLines, leftVar) = translateExpr(context, l)
-      val (context3, rightLines, rightVar) = translateExpr(context2, r)
-      val (context4, localVar) = localAnon(context3)
+      val (context2, leftLines, leftVars) = translateExpr(context, l)
+      val (context3, rightLines, rightVars) = translateExpr(context2, r)
+      val (context4, outVar) = localAnon(context3)
+
+      require(leftVars.length == 1)
+      require(rightVars.length == 1)
+
       val opStr = op match {
         case Plus => "+"
         case Minus => "-"
         case Times => "*"
         case Divide => "/"
       }
-      (context4, leftLines ++ rightLines :+ s"$localVar = $leftVar $opStr $rightVar", localVar)
+
+      (context4,
+       leftLines ++ rightLines :+ s"${outVar} = ${leftVars.head} $opStr ${rightVars.head}",
+       Seq(outVar))
     }
 
-    case app: Application => opcodeCall(context, app)
-
-    case Chain(comps, Some(Effect)) => if (comps.isEmpty) {
-      // An empty effect just leaves asig alone
-      (context, Seq(""), sigName)
-    } else {
-      val (context2, lines) = translateComps(context, comps)
-      (context2, lines, sigName)
+    // Unwrapped applications are number-valued functions
+    case app: Application => {
+      val (context2, outVar) = localAnon(context)
+      // No audio inputs to a number-valued function
+      opcodeCall(context, app, Seq(), Seq(outVar))
     }
 
-    case Chain(comps, Some(Source)) => if (comps.isEmpty) {
-      // An empty source produces no signal
-      (context, Seq("$sigName = 0"), sigName)
-    } else {
-      val (context2, lines) = translateComps(context, comps)
-      (context2, lines, sigName)
+    case CompNode(inputs, outputs, expr) => expr match {
+      // Applications wrapped in DAG nodes are components
+      case app: Application => opcodeCall(context, app, inputs, outputs)
+
+      // We can treat chains and parallel blocks the same now because the information by which they
+      // differ is encoded in the DAG
+      case Chain(body, _) => translateBlock(context, body, outputs)
+      case Parallel(body, _) => translateBlock(context, body, outputs)
     }
+
+    case c: Chain =>
+      throw new CsppTranslateError(expr.loc, "Chain expression was not transformed to DAG node.")
+
+    case p: Parallel =>
+      throw new CsppTranslateError(expr.loc, "Parallel expression was not transformed to DAG node.")
   }
 
-  def translateComps(context: Context, comps: Seq[Expr]): (Context, CsLines) = {
-    require(!comps.isEmpty)
-
-    // The typechecker has already verified that the app is of the correct type (either source
-    // or effect). So when we translate the expression, we'll get something like
-    //    asig opcode args...
-    // or
-    //    asig opcode asig args...
-    // Which automatically takes care of the plumbing for us
-    val (context2, compLines, _) = translateExpr(context, comps.head)
-
-    if (comps.length == 1) {
-      (context2, compLines)
+  def translateBlock(
+    context: Context, body: Seq[Expr], outputs: Seq[String]): (Context, CsLines, Seq[String]) =
+    if (body.isEmpty) {
+      // An empty block is an effect which just leaves it's inputs unchanged
+      (context, Seq(), outputs)
     } else {
-      val (context3, compsLines) = translateComps(context2, comps.tail)
-      (context3, compLines ++ compsLines)
+      val (context2, lines) = translateComponents(context, body)
+      (context2, lines, outputs)
     }
-  }
 
-  // Call an opcode with the given args, returning the name of the output variable
-  def opcodeCall(context: Context, app: Application): (Context, CsLines, String) = {
+  def translateComponents(context: Context, comps: Seq[Expr]): (Context, CsLines) =
+    if (comps.isEmpty) {
+      (context, Seq())
+    } else {
+      val (context2, headLines, _) = translateExpr(context, comps.head)
+      val (context3, tailLines) = translateComponents(context2, comps.tail)
+      (context3, headLines ++ tailLines)
+    }
+
+  // Call an opcode with the given args, returning the name of the output variables
+  def opcodeCall(context: Context, app: Application, inputs: Seq[String], outputs: Seq[String]):
+    (Context, CsLines, Seq[String]) = {
+
     val Application(Ident(opName), args, Some(ty)) = app
 
     if (isLocal(context, opName)) {
@@ -252,31 +318,31 @@ object CsppTranslator {
       require(ty == Number)
 
       val (context2, outName) = localAnon(context)
-      (context2, Seq(s"$outName = ${localName(opName)}"), outName)
+      (context2, Seq(s"$outName = ${localName(opName)}"), Seq(outName))
     } else if (isGlobal(context, opName)) {
       require(args.length == 0) // Typechecker should have ensured this
       require(ty == Number)
 
       val (context2, outName) = localAnon(context)
-      (context2, Seq(s"$outName = ${globalName(opName)}"), outName)
+      (context2, Seq(s"$outName = ${globalName(opName)}"), Seq(outName))
     } else {
 
       val (context2, argLines, argNames) = translateArgs(context, args)
-      val (context3, callLine, outName) = ty match {
+      val (context3, callLine, outNames) = ty match {
         case Number => {
           val (context3, outName) = localAnon(context2)
-          (context3, s"$outName ${opcodeName(opName)} ${argNames.mkString(", ")}", outName)
+          (context3, s"$outName ${opcodeName(opName)} ${argNames.mkString(", ")}", Seq(outName))
         }
 
-        case Source =>
-          (context2, s"$sigName ${opcodeName(opName)} ${argNames.mkString(", ")}", sigName)
+        case Component(inArity, outArity) => (
+          context2,
+          s"${outputs.mkString(", ")} ${opcodeName(opName)} ${(inputs ++ argNames).mkString(", ")}",
+          outputs
+        )
 
-
-        case Effect =>
-          (context2, s"$sigName ${opcodeName(opName)} ${(sigName +: argNames).mkString(", ")}", sigName)
       }
 
-      (context3, argLines ++ Seq(callLine), outName)
+      (context3, argLines ++ Seq(callLine), outNames)
 
     }
   }
@@ -286,8 +352,8 @@ object CsppTranslator {
     if (args.isEmpty) {
       (context, Seq(), Seq())
     } else {
-      val (context2, argLines, argName) = translateExpr(context, args.head)
-      val (context3, argsLines, argNames) = translateArgs(context2, args.tail)
-      (context3, argLines ++ argsLines, argName +: argNames)
+      val (context2, argLines, headArgNames) = translateExpr(context, args.head)
+      val (context3, argsLines, tailArgNames) = translateArgs(context2, args.tail)
+      (context3, argLines ++ argsLines, headArgNames ++ tailArgNames)
     }
 }

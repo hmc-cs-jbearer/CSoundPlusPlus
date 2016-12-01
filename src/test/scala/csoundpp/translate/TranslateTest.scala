@@ -5,7 +5,9 @@ import org.scalatest.FunSuite
 import org.scalatest.Matchers
 
 import absyn._
+import AbsynSugar._
 import csound.CsoundMinifier
+import CsppDagNodes._
 
 class TranslateSuite extends FunSuite with Matchers {
 
@@ -23,11 +25,11 @@ class TranslateSuite extends FunSuite with Matchers {
     try {
       process(translator(input)) should equal (process(output))
     } catch {
-      case err: CsppCompileError => fail(s"Translation failed: $err")
+      case e: CsppCompileError => fail(e.toString + "\n" + e.getStackTrace.mkString("\n"))
     }
   }
 
-  def testGoodProgram(input: Seq[Statement], expected: CsLines) = {
+  def testGoodProgram(input: Seq[StmtNode], expected: CsLines) = {
     CsppTranslator(input) match {
       case Right(output) => process(output) should equal (process(expected))
       case Left(err) => fail(s"Translation failed: $err")
@@ -41,18 +43,20 @@ class TranslateSuite extends FunSuite with Matchers {
     def ~>(output: CsLine): Assertion = run(Seq(output))
   }
 
-  implicit class ProgramTester(input: Seq[Statement]) extends Tester {
+  implicit class ProgramTester(input: Seq[StmtNode]) extends Tester {
     override def run(output: CsLines) = testGoodProgram(input, output)
   }
 
-  implicit class StmtTester(input: Statement) extends Tester {
+  implicit class StmtTester(input: StmtNode) extends Tester {
     override def run(output: CsLines) =
-      testGoodInput[Statement](input, CsppTranslator.translateStmt(emptyContext, _)._2, output)
+    testGoodInput[StmtNode](
+        input, CsppTranslator.translateStmtNode(CsppTranslator.EmptyContext, _)._2, output)
   }
 
   implicit class ExprTester(input: Expr) extends Tester {
     override def run(output: CsLines) =
-      testGoodInput[Expr](input, CsppTranslator.translateExpr(emptyContext, _)._2, output)
+      testGoodInput[Expr](
+        input, CsppTranslator.translateExpr(CsppTranslator.EmptyContext, _)._2, output)
   }
 
   // Syntactic sugar for AST
@@ -73,7 +77,7 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("expression.var.component") {
-    astVar("foo", Source) ~> "asig cspp_foo"
+    CompNode(Seq(), Seq("a0"), astVar("foo", Source)) ~> "a0 cspp_foo"
   }
 
   test("expression.function") {
@@ -102,19 +106,19 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("expression.source") {
-    (Application(Ident("source"), Seq(
+    CompNode(Seq(), Seq("a0"), Application(Ident("source"), Seq(
       astNum(1),
       astVar("arg", Number))
     ) annotated Source) ~>
     Seq(
       "i0 = 1.0",
       "i1 cspp_arg",
-      "asig cspp_source i0, i1"
+      "a0 cspp_source i0, i1"
     )
   }
 
   test("expression.source.functionArgs") {
-    (Application(Ident("source"), Seq(
+    CompNode(Seq(), Seq("a0"), Application(Ident("source"), Seq(
       Application(Ident("arg"), Seq(
         astNum(1))
       ) annotated Number)
@@ -122,24 +126,24 @@ class TranslateSuite extends FunSuite with Matchers {
     Seq (
       "i0 = 1.0",
       "i1 cspp_arg i0",
-      "asig cspp_source i1"
+      "a0 cspp_source i1"
     )
   }
 
   test("expression.effect") {
-    (Application(Ident("effect"), Seq(
+    CompNode(Seq("a0"), Seq("a1"), Application(Ident("effect"), Seq(
       astNum(1),
       astVar("arg", Number))
     ) annotated Effect) ~>
     Seq(
       "i0 = 1.0",
       "i1 cspp_arg",
-      "asig cspp_effect asig, i0, i1"
+      "a1 cspp_effect a0, i0, i1"
     )
   }
 
   test("expression.effect.functionArgs") {
-    (Application(Ident("effect"), Seq(
+    CompNode(Seq("a0"), Seq("a1"), Application(Ident("effect"), Seq(
       Application(Ident("arg"), Seq(
         astNum(1))
       ) annotated Number)
@@ -147,43 +151,90 @@ class TranslateSuite extends FunSuite with Matchers {
     Seq (
       "i0 = 1.0",
       "i1 cspp_arg i0",
-      "asig cspp_effect asig, i1"
+      "a1 cspp_effect a0, i1"
     )
   }
 
+  test("expression.mux") {
+    CompNode(Seq("a0", "a1"), Seq("a2"), astVar("mux", Component(2, 1))) ~> "a2 cspp_mux a0, a1"
+  }
+
+   test("expression.demux") {
+    CompNode(Seq("a0"), Seq("a1", "a2"), astVar("demux", Component(1, 2))) ~> "a1, a2 cspp_demux a0"
+  }
+
   test("expression.chain.source.one") {
-    (Chain(Seq(astVar("source", Source))) annotated Source) ~> "asig cspp_source"
+    CompNode(Seq(), Seq("a0"), Chain(Seq(
+      CompNode(Seq(), Seq("a0"), astVar("source", Source))
+    )) annotated Source) ~>
+    "a0 cspp_source"
   }
 
   test("expression.chain.source.withEffect") {
-    (Chain(Seq(
-      astVar("source", Source),
-      astVar("effect", Effect))
-    ) annotated Source) ~>
+    CompNode(Seq(), Seq("a1"), Chain(Seq(
+      CompNode(Seq(), Seq("a0"), astVar("source", Source)),
+      CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect))
+    )) annotated Source) ~>
     Seq(
-      "asig cspp_source",
-      "asig cspp_effect asig"
+      "a0 cspp_source",
+      "a1 cspp_effect a0"
     )
   }
 
   test("expression.chain.effect.empty") {
-    // When an effect is used, the identifier asig must already exist and contain the signal.
-    // Therefore, to pass the signal through unchanged, we don't have to do anything.
-    (Chain(Seq()) annotated Effect) ~> ""
+    CompNode(Seq(), Seq(), Chain(Seq()) annotated Effect) ~> ""
   }
 
   test("expression.chain.effect.one") {
-    (Chain(Seq(astVar("effect", Effect))) annotated Effect) ~> "asig cspp_effect asig"
+    CompNode(Seq("a0"), Seq("a1"), Chain(Seq(
+      CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect))
+    )) annotated Effect) ~> "a1 cspp_effect a0"
   }
 
   test("expression.chain.effect.many") {
-    (Chain(Seq(
-      astVar("effect1", Effect),
-      astVar("effect2", Effect))
-    ) annotated Effect) ~>
+    CompNode(Seq("a0"), Seq("a2"), Chain(Seq(
+      CompNode(Seq("a0"), Seq("a1"), astVar("effect1", Effect)),
+      CompNode(Seq("a1"), Seq("a2"), astVar("effect2", Effect))
+    )) annotated Effect) ~>
     Seq(
-      "asig cspp_effect1 asig",
-      "asig cspp_effect2 asig"
+      "a1 cspp_effect1 a0",
+      "a2 cspp_effect2 a1"
+    )
+  }
+
+  test("expression.parallel.moreIns") {
+    // parallel { effect mux }
+    CompNode(Seq("a0", "a1", "a2"), Seq("a3", "a4"), Parallel(Seq(
+      CompNode(Seq("a0"), Seq("a3"), astVar("effect", Effect)),
+      CompNode(Seq("a1", "a2"), Seq("a4"), astVar("mux", Component(2, 1)))
+    )) annotated Component(3, 2)) ~>
+    Seq(
+      "a3 cspp_effect a0",
+      "a4 cspp_mux a1, a2"
+    )
+  }
+
+  test("expression.parallel.moreOuts") {
+    // parallel { source effect }
+    CompNode(Seq("a0"), Seq("a1", "a2"), Parallel(Seq(
+      CompNode(Seq(), Seq("a1"), astVar("source", Source)),
+      CompNode(Seq("a0"), Seq("a2"), astVar("effect", Effect))
+    )) annotated Component(1, 2)) ~>
+    Seq(
+      "a1 cspp_source",
+      "a2 cspp_effect a0"
+    )
+  }
+
+  test("expression.parallel.equalInOut") {
+    // parallel { effect1 effect2 }
+    CompNode(Seq("a0", "a1", "a2"), Seq("a3", "a4", "a5"), Parallel(Seq(
+        CompNode(Seq("a0"), Seq("a3"), astVar("effect1", Effect)),
+        CompNode(Seq("a1", "a2"), Seq("a4", "a5"), astVar("effect2", Component(2, 2)))
+    )) annotated Component(3, 3)) ~>
+    Seq(
+      "a3 cspp_effect1 a0",
+      "a4, a5 cspp_effect2 a1, a2"
     )
   }
 
@@ -254,8 +305,11 @@ class TranslateSuite extends FunSuite with Matchers {
   // Statement tests
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
+  def scalarAssignment(id: Ident, params: Seq[Ident], body: Expr) =
+    AssignNode(Seq(), Seq(), Assignment(id, params, body))
+
   test("statement.assignment.number") {
-    Assignment(Ident("foo"), Seq(), astNum(1)) ~> Seq(
+    scalarAssignment(Ident("foo"), Seq(), astNum(1)) ~> Seq(
       "opcode cspp_foo, i, 0",
       "i0 = 1.0",
       "xout i0",
@@ -264,26 +318,32 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("statement.assignment.source") {
-    Assignment(Ident("foo"), Seq(), astVar("fm", Source)) ~> Seq(
+    AssignNode(
+      Seq(), Seq("a0"), Assignment(Ident("foo"), Seq(),
+        CompNode(Seq(), Seq("a0"), astVar("fm", Source)))) ~>
+    Seq(
       "opcode cspp_foo, a, 0",
-      "asig cspp_fm",
-      "xout asig",
+      "a0 cspp_fm",
+      "xout a0",
       "endop"
     )
   }
 
   test("statement.assignment.effect") {
-    Assignment(Ident("foo"), Seq(), astVar("compress", Effect)) ~> Seq(
+    AssignNode(
+      Seq("a0"), Seq("a1"), Assignment(Ident("foo"), Seq(),
+        CompNode(Seq("a0"), Seq("a1"), astVar("compress", Effect)))) ~>
+    Seq(
       "opcode cspp_foo, a, a",
-      "asig xin",
-      "asig cspp_compress asig",
-      "xout asig",
+      "a0 xin",
+      "a1 cspp_compress a0",
+      "xout a1",
       "endop"
     )
   }
 
   test("statement.assignment.function.number") {
-    Assignment(Ident("foo"), Seq(Ident("arg")), astVar("arg", Number)) ~> Seq(
+    scalarAssignment(Ident("foo"), Seq(Ident("arg")), astVar("arg", Number)) ~> Seq(
       "opcode cspp_foo, i, i",
       "iarg xin",
       "i0 = iarg",
@@ -293,27 +353,31 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("statement.assignment.function.source") {
-    Assignment(Ident("foo"), Seq(Ident("arg")), Application(Ident("source"), Seq(
-      astVar("arg", Number))
-    ) annotated Source) ~> Seq(
+    AssignNode(Seq(), Seq("a0"),
+      Assignment(Ident("foo"), Seq(Ident("arg")),
+        CompNode(Seq(), Seq("a0"), Application(Ident("source"), Seq(astVar("arg", Number))) annotated Source)
+      )
+    ) ~> Seq(
       "opcode cspp_foo, a, i",
       "iarg xin",
       "i0 = iarg",
-      "asig cspp_source i0",
-      "xout asig",
+      "a0 cspp_source i0",
+      "xout a0",
       "endop"
     )
   }
 
   test("statement.assignment.function.effect") {
-    Assignment(Ident("foo"), Seq(Ident("arg")), Application(Ident("effect"), Seq(
-      astVar("arg", Number))
-    ) annotated Effect) ~> Seq(
+    AssignNode(Seq("a0"), Seq("a1"),
+      Assignment(Ident("foo"), Seq(Ident("arg")),
+        CompNode(Seq("a0"), Seq("a1"), Application(Ident("effect"), Seq(astVar("arg", Number))) annotated Effect)
+      )
+    ) ~> Seq(
       "opcode cspp_foo, a, ai",
-      "asig, iarg xin",
+      "a0, iarg xin",
       "i0 = iarg",
-      "asig cspp_effect asig, i0",
-      "xout asig",
+      "a1 cspp_effect a0, i0",
+      "xout a1",
       "endop"
     )
   }
@@ -322,15 +386,35 @@ class TranslateSuite extends FunSuite with Matchers {
     s"instr $instrId",
     "iamp ampmidi 1",
     "ifreq cpsmidi",
-    "asig cspp_source",
-    "out asig",
+    "a0 cspp_source",
+    "out a0",
     "endin"
   )
 
   def sourceInstr: CsLines = sourceInstr("1")
 
+  test("statement.instrument.chain") {
+    InstrNode(Seq(), Seq("a1"), Instrument(Seq(astNum(2)),
+      CompNode(Seq(), Seq("a1"), Chain(Seq(
+        CompNode(Seq(), Seq("a0"), astVar("source", Source)),
+        CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect))
+      )) annotated Source)
+    )) ~> Seq(
+      "instr 1",
+      "iamp ampmidi 1",
+      "ifreq cpsmidi",
+      "a0 cspp_source",
+      "a1 cspp_effect a0",
+      "out a1",
+      "endin",
+      "i0 = 2.0",
+      "massign i0, 1"
+    )
+  }
+
   test("statement.instrument.numChannel") {
-    Instrument(Seq(astNum(2)), astVar("source", Source)) ~>
+    InstrNode(Seq(), Seq("a0"), Instrument(Seq(astNum(2)),
+      CompNode(Seq(), Seq("a0"), astVar("source", Source)))) ~>
     (sourceInstr ++ Seq(
       "i0 = 2.0",
       "massign i0, 1"
@@ -338,14 +422,14 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("statement.instrument.funcChannel") {
-    Instrument(
+    InstrNode(Seq(), Seq("a0"), Instrument(
       Seq(
         Application(Ident("channel"), Seq(
           astNum(2))
         ) annotated Number
       ),
-      astVar("source", Source)
-    ) ~>
+      CompNode(Seq(), Seq("a0"), astVar("source", Source))
+    )) ~>
     (sourceInstr ++ Seq(
       "i0 = 2.0",
       "i1 cspp_channel i0",
@@ -354,7 +438,10 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("statement.instrument.manyChannels") {
-    Instrument(Seq(astNum(2), astNum(3)), astVar("source", Source)) ~>
+    InstrNode(Seq(), Seq("a0"), Instrument(
+      Seq(astNum(2), astNum(3)),
+      CompNode(Seq(), Seq("a0"), astVar("source", Source))
+    )) ~>
     (sourceInstr ++ Seq(
       "i0 = 2.0",
       "massign i0, 1",
@@ -364,16 +451,19 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("statement.instrument.midiVelocity") {
-    Instrument(Seq(astNum(2)), Application(Ident("source"), Seq(
-      astVar("amp", Number))
-    ) annotated Source) ~>
+    InstrNode(Seq(), Seq("a0"), Instrument(
+      Seq(astNum(2)),
+      CompNode(Seq(), Seq("a0"), Application(
+        Ident("source"), Seq(astVar("amp", Number))
+      ) annotated Source)
+    )) ~>
     Seq(
       "instr 1",
       "iamp ampmidi 1",
       "ifreq cpsmidi",
       "i0 = iamp",
-      "asig cspp_source i0",
-      "out asig",
+      "a0 cspp_source i0",
+      "out a0",
       "endin",
 
       "i0 = 2.0",
@@ -382,16 +472,19 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   test("statement.instrument.midiFreq") {
-    Instrument(Seq(astNum(2)), Application(Ident("source"), Seq(
-      astVar("freq", Number))
-    ) annotated Source) ~>
+    InstrNode(Seq(), Seq("a0"), Instrument(
+      Seq(astNum(2)),
+      CompNode(Seq(), Seq("a0"), Application(Ident("source"), Seq(
+        astVar("freq", Number))
+      ) annotated Source)
+    )) ~>
     Seq(
       "instr 1",
       "iamp ampmidi 1",
       "ifreq cpsmidi",
       "i0 = ifreq",
-      "asig cspp_source i0",
-      "out asig",
+      "a0 cspp_source i0",
+      "out a0",
       "endin",
 
       "i0 = 2.0",
@@ -401,8 +494,14 @@ class TranslateSuite extends FunSuite with Matchers {
 
   test("statement.instrument.manyInstruments") {
     Seq(
-      Instrument(Seq(astNum(3)), astVar("source", Source)),
-      Instrument(Seq(astNum(4)), astVar("source", Source))
+      InstrNode(Seq(), Seq("a0"), Instrument(
+        Seq(astNum(3)),
+        CompNode(Seq(), Seq("a0"), astVar("source", Source))
+      )),
+      InstrNode(Seq(), Seq("a0"), Instrument(
+        Seq(astNum(4)),
+        CompNode(Seq(), Seq("a0"), astVar("source", Source))
+      ))
     ) ~>
     (sourceInstr ++ Seq(
       "i0 = 3.0",

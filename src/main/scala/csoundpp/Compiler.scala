@@ -17,7 +17,8 @@ object CsppCompiler {
       tokens <- CsppLexer(source).right
       ast <- CsppParser(importStdLib ++ tokens, disabled).right
       annotated <- CsppTypeChecker(ast).right
-      csound <- CsppTranslator(annotated, config.debug).right
+      dag <- CsppDag(annotated).right
+      csound <- CsppTranslator(dag, config.debug).right
     } yield preamble.contents.split("\n") ++ csound
 
     // If necessary, minify the human-readable output by removing whitespace and comments
