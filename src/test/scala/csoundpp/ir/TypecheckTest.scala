@@ -307,8 +307,12 @@ class TypecheckSuite extends FunSuite with Matchers {
     env() ~> Assign(Ident("foo"), Var(Ident("bar"))) ~/> statement
   }
 
-  test("statement.assignment.invalid.reassignment") {
+  test("statement.assignment.invalid.reassignment.sameType") {
     env("foo" -> Number) ~> Assign(Ident("foo"), Num(42)) ~/> statement
+  }
+
+  test("statement.assignment.invalid.reassignment.differentType") {
+    env("foo" -> Source) ~> Assign(Ident("foo"), Num(42)) ~/> statement
   }
 
   test("statement.assignment.invalid.selfAssign.known") {
