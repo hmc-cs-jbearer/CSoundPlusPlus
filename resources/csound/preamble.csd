@@ -177,3 +177,11 @@ asig, iatt, idec, isus, irel xin
 kenv madsr iatt, idec, isus, irel
 xout kenv*asig
 endop
+
+; average
+;   The pointwise average of two input signals.
+opcode cspp_average, a, aa
+a1, a2 xin
+avg = (a1 + a2) / 2
+xout avg
+endop

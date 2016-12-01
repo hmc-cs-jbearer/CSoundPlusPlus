@@ -21,6 +21,8 @@ harmonicFm(amp, freq) = {
     adsr(0.05, 0.1, 0.7, 0.05)
 }
 
+instr(1) = harmonicFm(amp, freq)
+
 /**
  * The code below is an example of using parallel chains to achieve sidechain compression. It also
  * uses the channel source to capture the output of one instrument and use it as a source in
@@ -32,8 +34,8 @@ harmonicFm(amp, freq) = {
  * parallel.
  */
 
-kickChannel = 1
-bassChannel = 2
+kickChannel = 2
+bassChannel = 3
 
 kick(amp) = {
     // Code for a kick drum synth goes here

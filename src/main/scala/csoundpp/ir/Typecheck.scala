@@ -23,9 +23,10 @@ object CsppTypeChecker {
     addVars(new Env(),
       Ident("foscil") -> Function(Source, 4),
       Ident("sine") -> Function(Source, 2),
-      Ident("sidechain_compress") -> Function(Component(2, 1), 5)
+      Ident("sidechain_compress") -> Function(Component(2, 1), 5),
       Ident("compress") -> Function(Effect, 5),
-      Ident("adsr") -> Function(Effect, 4)
+      Ident("adsr") -> Function(Effect, 4),
+      Ident("average") -> Function(Component(2, 1), 0)
     ),
   ast)
 
