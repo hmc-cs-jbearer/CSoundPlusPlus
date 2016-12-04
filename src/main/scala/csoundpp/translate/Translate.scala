@@ -31,10 +31,10 @@ object CsppTranslator {
   type CsLine = String
   type CsLines = Seq[CsLine]
 
-  var debug = false
+  var debugMode = false
 
   def apply(dag: Seq[StmtNode], debug: Boolean = false): Either[CsppCompileError, CsLines] = {
-    CsppTranslator.debug = debug
+    CsppTranslator.debugMode = debug
     try {
       val (_, lines) = translateStmtNodes(EmptyContext, dag)
       Right(lines)
@@ -103,14 +103,29 @@ object CsppTranslator {
   object WARNING extends LogLevel("WARNING")
   object ERROR extends LogLevel("ERROR")
 
+  def debug(lines: CsLine*): CsLines = if (debugMode) lines else Seq()
+
+  def _log(printf: String, level: LogLevel, name: String, fmt: String, params: Seq[String]): CsLines = {
+    val fmtStr = "\"" ++ s"CSPPLOG $level name=$name $fmt" ++ "\\n\""
+    debug(printf ++ " " ++ (fmtStr +: params).mkString(", "))
+  }
+
   // Generate a CSound prints statement
   def log(level: LogLevel, name: String, fmt: String, params: String*): CsLines =
-    if (debug) {
-      val fmtStr = "\"" ++ s"CSPPLOG $level name=$name $fmt" ++ "\\n\""
-      Seq("prints " ++ (fmtStr +: params).mkString(", "))
-    } else {
-      Seq()
-    }
+    _log("prints", level, name, fmt, params)
+
+  // Generate a CSound printks statement
+  def logk(level: LogLevel, name: String, fmt: String, params: String*): CsLines =
+    _log("printks", level, name, fmt,
+      // printks takes an i-rate parameter specifiying the time in seconds between print statements.
+      // 0 means print at the control rate.
+      "0" +:params)
+
+  def loga(level: LogLevel, name: String, sig: String, fmt: String, params: String*): CsLines =
+    debug(s"k$sig downsamp $sig") ++ _log("printks", level, name, fmt + " samp=%f",
+      // printks takes an i-rate parameter specifiying the time in seconds between print statements.
+      // 0 means print at the control rate.
+      ("0" +: params) :+ s"k$sig")
 
   /**
    * Create a new user defined opcode which implements a CSound++ component. The opcode may have one
@@ -170,7 +185,8 @@ object CsppTranslator {
     "iamp ampmidi 1" +:
     "ifreq cpsmidi" +:
     (log(INFO, "note_on", s"instr=$name amp=%f freq=%f", "iamp", "ifreq") ++
-    body ++ Seq(
+    body ++
+    loga(DEBUG, "sample", outVar, s"instr=$name") ++ Seq(
     s"out $outVar",
     "endin",
     "")) // End with a blank line just for readability
