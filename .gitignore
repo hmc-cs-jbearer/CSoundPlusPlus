@@ -1,2 +1,6 @@
 *.pyc
 *__pycache__*
+*CMakeCache.txt
+*CMakeFiles*
+*Makefile
+*.cmake

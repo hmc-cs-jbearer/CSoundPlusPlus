@@ -3,8 +3,6 @@
 import argparse
 import sys
 
-print(sys.path)
-
 from csoundpp.errors import SubprocessError
 from csoundpp.player import play
 

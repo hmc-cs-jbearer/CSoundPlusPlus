@@ -3,9 +3,9 @@
 import sys
 
 class ProgramData:
-    def __init__(self, amps=[], freqs=[]):
-        self.freqs = freqs
-        self.amps = amps
+    def __init__(self, amps=None, freqs=None):
+        self.freqs = freqs or []
+        self.amps = amps or []
 
 def analyzeLogEvent(info, result):
     if info['name'] == 'note_on':

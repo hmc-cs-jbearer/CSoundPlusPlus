@@ -17,3 +17,7 @@ class SubprocessError(CsppError):
 
     def code(self):
         return self._code
+
+class CompileError(CsppError):
+    def __init__(self, msg):
+        CsppError.__init__(self, msg)

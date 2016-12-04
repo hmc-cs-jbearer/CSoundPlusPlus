@@ -12,12 +12,15 @@ os:
 osx_image: xcode8.1
 
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then bin/osx_install.sh ; fi
+  - "bin/${TRAVIS_OS_NAME}_install.sh"
 
   # We need to give sudo an absolute path, or Linux can't find pip3
   - PIP3PATH=`which pip3`
   - sudo "$PIP3PATH" install --upgrade pip
   - sudo "$PIP3PATH" install -r requirements.txt
+
+  - cmake CMakeLists.txt
+  - sudo make
 
 script:
   - sbt "++$SCALA_VERSION" clean coverage test
@@ -39,4 +42,3 @@ matrix:
             - python3
             - python3-nose
             - python3-setuptools
-            - csound

@@ -39,7 +39,12 @@ def play(programFile, scoreFile, outFile):
             kwargs = {}
             killSig = signal.SIGINT
 
-        argv = ["csound", "--orc", "-F", scoreFile, "-o", outFile, orcFile]
+        argv = ["csound",
+                "--opcode-lib=lib/libcsoundpp.so",
+                "--orc",
+                "-F", scoreFile,
+                "-o", outFile,
+                orcFile]
         csound = Popen(argv, stderr=PIPE, *kwargs)
 
         ranToCompletion = False

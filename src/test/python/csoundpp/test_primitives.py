@@ -1,7 +1,9 @@
 import os
+import sys
 from unittest import TestCase
 
 from csoundpp.analysis import analyze, chiSquared
+from csoundpp.errors import CompileError
 from csoundpp.files import uniqueFile, tempPath
 from csoundpp.player import play
 import csoundpp.lang as lang
@@ -28,7 +30,11 @@ class Amplitude(TestCase):
 
     def doTest(self, source):
         with tempPath() as orcFile:
-            lang.compile(orcFile, source, '-d')
+            try:
+                lang.compile(orcFile, source, '-d')
+            except CompileError as e:
+                self.fail('CSound++ compile error: ' + e.getMessage() + '\nSource was:\n' + source)
+
             data = analyze(self.play(orcFile))
 
         self.assertEqual(len(data.amps), len(self.velocities))
@@ -39,3 +45,6 @@ class Amplitude(TestCase):
 
     def testSine(self):
         self.doTest('instr(1) = sine(amp, freq)')
+
+    def testAverage2(self):
+        self.doTest('instr(1) = { parallel { sine(amp, freq) sine(amp, freq * 2) } average }')
