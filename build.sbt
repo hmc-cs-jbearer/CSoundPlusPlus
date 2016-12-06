@@ -20,3 +20,5 @@ libraryDependencies ++= Seq(
 )
 
 unmanagedClasspath in (Compile, runMain) += baseDirectory.value / "resources"
+
+assemblyOutputPath in assembly := baseDirectory.value / "bin" / "cspp.jar"
