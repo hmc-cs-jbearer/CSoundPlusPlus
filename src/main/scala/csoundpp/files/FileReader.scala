@@ -7,6 +7,9 @@ case class CsppFile(path: String, contents: String)
 
 object CsppFileReader {
 
+  def resourcePath(path: String*) =
+    (Seq(BuildInfo.baseDirectory, "resources") ++ path).mkString(File.separator)
+
   def apply(p: String): Either[CsppCompileError, CsppFile] =
     for {
       path <- absPath(p).right
@@ -18,9 +21,9 @@ object CsppFileReader {
       // First we try treating the expression as an absolute path or a path relative to the current
       // directory
       Right(path)
-    } else if (Files.exists(Paths.get("resources" + File.separator + path))) {
+    } else if (Files.exists(Paths.get(resourcePath(path)))) {
       // If that failed, we look in resources
-      Right("resources" + File.separator + path)
+      Right(resourcePath(path))
     } else {
       Left(new CsppFileError(s"Cannot open file '$path'."))
     }

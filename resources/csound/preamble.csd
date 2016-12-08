@@ -1,4 +1,4 @@
-#! bin/csound-play
+#! /usr/bin/env csound-play
 ; This file is prepended to every compiled CSound++ program. It contains global setup code as well
 ; as CSound opcodes defining the built-in CSound++ features.
 

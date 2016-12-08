@@ -22,3 +22,16 @@ libraryDependencies ++= Seq(
 unmanagedClasspath in (Compile, runMain) += baseDirectory.value / "resources"
 
 assemblyOutputPath in assembly := baseDirectory.value / "bin" / "cspp.jar"
+
+lazy val root = (project in file(".")).
+  enablePlugins(BuildInfoPlugin).
+  settings(
+    buildInfoKeys := Seq[BuildInfoKey](
+        name,
+        version,
+        scalaVersion,
+        sbtVersion,
+        BuildInfoKey.map(baseDirectory) { case (k, v) => k -> v.toString }
+    ),
+    buildInfoPackage := "cspp"
+  )

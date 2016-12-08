@@ -30,7 +30,7 @@ object ArgParser {
 
     new OptionParser[Config]("cspp") {
 
-      head("cspp", "0.0.1")
+      head(BuildInfo.name, BuildInfo.version)
 
       cmd("compile").
         text("compile a CSound++ program").
