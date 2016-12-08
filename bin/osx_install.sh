@@ -8,7 +8,7 @@ brew install python3
 
 # Install CSound
 CSOUND_PKG="csound6.06-OSX-universal"
-curl -sL "https://sourceforge.net/projects/csound/files/csound6/Csound6.06/$CSOUND_PKG.dmg/" > "$CSOUND_PKG.dmg"
+curl -sL -m 900 "https://sourceforge.net/projects/csound/files/csound6/Csound6.06/$CSOUND_PKG.dmg/" > "$CSOUND_PKG.dmg"
 sudo hdiutil attach "$CSOUND_PKG.dmg"
 sudo installer -package "/Volumes/Csound 6.06/$CSOUND_PKG.pkg" -target /
 sudo hdiutil detach "/Volumes/Csound 6.06"
