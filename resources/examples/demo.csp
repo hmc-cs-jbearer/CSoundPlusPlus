@@ -17,5 +17,5 @@ my_effect(threshold, ratio) = {
 
 instr(channel) = {
     my_source(amp, freq)
-    my_effect(0.6, 3)
+    my_effect(40, 3)
 }
