@@ -51,6 +51,11 @@ export PATH="$CSPPTREE/bin:$PATH"
 alias cspp='java -jar "$CSPPTREE/bin/cspp.jar"'
 ```
 
+Then, either restart your terminal or run
+```bash
+source ~/.bashrc
+```
+
 Finally, you are ready to run `cspp`:
 ```bash
 cspp --help
