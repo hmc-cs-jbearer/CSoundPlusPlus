@@ -6,7 +6,8 @@ def compile(file, program, *options):
     with tempPath() as programFile:
         with open(programFile, 'w') as f:
             f.write(program)
-        status = subprocess.call(['sbt "run compile {} {} -o {}"'.format(
-            programFile, ' '.join(options), file)], shell=True)
+
+        argv = ['java', '-jar', 'bin/cspp.jar', 'compile', programFile, '-o', file] + list(options)
+        status = subprocess.call(argv)
 
     assert status == 0, 'Failed to compile {}.'.format(program)

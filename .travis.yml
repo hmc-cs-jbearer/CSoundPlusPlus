@@ -21,6 +21,7 @@ before_install:
 
 script:
   - sbt "++$SCALA_VERSION" clean coverage test
+  - echo "Building cspp jar"; sbt "++$SCALA_VERSION" assembly
   - python3 -m nose -vv src/test/python/csoundpp
 
 after_success:
