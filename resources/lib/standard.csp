@@ -21,3 +21,85 @@
  *   index: the index of modulation.
  */
 fm(amp, freq, ratio, index) = foscil(amp, freq * ratio, freq, index)
+
+
+// Filter modes
+FILT_LOPASS        = 0
+FILT_HIPASS        = 1
+FILT_BANDPASS      = 2
+FILT_BANDREJECT    = 3
+FILT_PEAKING       = 4
+FILT_LOSHELF       = 5
+FILT_HISHELF       = 6
+
+/*
+ * A resonant low pass filter.
+ * Inputs:
+ *   cutoff: the cutoff frequency in Hz.
+ *   Q: the quality of the filter. Determines the reonance. At the cutoff frequency, the amplitude
+ *      gain in dB is 20*log(Q). Higher values of Q result in a narrower resonance peak. The highest
+ *      quality at which there is no resonance is sqrt(0.5).
+ */
+lopass(cutoff, Q) = filt(FILT_LOPASS, cutoff, 0, Q)
+
+/*
+ * A resonant high pass filter.
+ * Accepts the same inputs as lopass.
+ */
+hipass(cutoff, Q) = filt(FILT_HIPASS, cutoff, 0, Q)
+
+/*
+ * A bandpass filter.
+ * Inputs:
+ *  center: the center frequency in Hz.
+ *  Q: the quality of the filter. Determines the bandwidth: bandwidth = center / Q
+ */
+bandpass(center, Q) = filt(FILT_BANDPASS, center, 0, Q)
+
+/*
+ * A bandreject filter.
+ * Accepts the same inputs as bandpass.
+ */
+bandreject(center, Q) = filt(FILT_BANDREJECT, center, 0, Q)
+
+/*
+ * A peaking filter. Zero gain at high and low frequencies, and a controllable amount of gain at the
+ * center frequency.
+ * Inputs:
+ *   center: the center frequency in Hz.
+ *   level: the amount of boost or cut at the center frequency. 1 indicates no gain, less than 1 is
+ *      a cut, and greater than 1 is a boost. Must be nonnegative.
+ *   Q: the quality of the filter. Determines the bandwidth. Values greater than sqrt(0.5) result in
+ *      resonance.
+ */
+peaking(center, level, Q) = filt(FILT_PEAKING, center, level, Q)
+
+/*
+ * A low shelf filter. Frequencies below the corner frequency are amplified by an amount controlled
+ *  by the level. High frequencies are not changed.
+ * Inputs:
+ *   corner: the corner frequency in Hz.
+ *   level: the amount of boost or cut at 0 Hz. 1 indicates no gain, less than 1 is
+ *      a cut, and greater than 1 is a boost. Must be nonnegative.
+ *   Q: the quality of the filter. Determines the steepness of the shelf.. Values greater than
+ *      sqrt(0.5) result in resonance near the corner frequency.
+ */
+loshelf(corner, level, Q) = filt(FILT_LOSHELF, corner, level, Q)
+
+/*
+ * A high shelf filter.
+ * Accepts the same inputs as loshelf.
+ */
+hishelf(corner, level, Q) = filt(FILT_HISHELF, corner, level, Q)
+
+// Convenience functions for transposing without doing math
+transpose_up(interval) = transpose(interval)
+transpose_down(interval) = transpose(1 / interval)
+
+// Intervals
+MINOR_THIRD     = 6 / 5
+MAJOR_THIRD     = 5 / 4
+PERFECT_FOURTH  = 4 / 3
+PERFECT_FIFTH   = 3 / 2
+OCTAVE          = 2
+// TODO add more
