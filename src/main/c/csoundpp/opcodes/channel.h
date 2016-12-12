@@ -2,23 +2,25 @@
 
 typedef struct {
     // Information about the opcode instance
-    OPDS    h;
+    OPDS        h;
 
     // Output signal
-    MYFLT * aout;
+    MYFLT       *aout;
 
     // Inputs: the channel from which to source audio
-    MYFLT * id;
+    MYFLT       *id;
 
     // Internal state
-    MYFLT ** buffer;
+    MYFLT       **buffer;
+    uint32_t    *buffer_sz;
 } CHANNEL;
 
 typedef struct {
-    OPDS    h;
-    MYFLT * asig;
-    MYFLT * id;
-    MYFLT ** buffer;
+    OPDS        h;
+    MYFLT       *asig;
+    MYFLT       *id;
+    MYFLT       **buffer;
+    uint32_t    *buffer_sz;
 } CHANNEL_OUT;
 
 extern int channel_init(CSOUND *csound, CHANNEL *channel);

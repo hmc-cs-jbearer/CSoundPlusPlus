@@ -24,6 +24,8 @@ object CsppDagNodes {
 
   case class InstrNode(inputs: Seq[String], outputs: Seq[String], instrument: Instrument)
     extends StmtNode
+
+  case class SendsNode(inputs: Seq[String], outputs: Seq[String], sends: Sends) extends StmtNode
 }
 
 /**
@@ -104,6 +106,13 @@ object CsppDag {
       val (context, inputs) = signalAnons(EmptyContext, inArity)
       val (_, transformedBody, outputs) = transformExpr(context, body, inputs)
       InstrNode(inputs, outputs, Instrument(channels, transformedBody))
+    }
+
+    case s @ Sends(channel, body) => {
+      val inArity = getType(body, "effect", { case Component(in, _) => in })
+      val (context, inputs) = signalAnons(EmptyContext, inArity)
+      val (_, transformedBody, outputs) = transformExpr(context, body, inputs)
+      SendsNode(inputs, outputs, Sends(channel, transformedBody))
     }
 
   }

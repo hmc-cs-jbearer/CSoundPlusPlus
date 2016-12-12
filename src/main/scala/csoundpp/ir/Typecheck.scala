@@ -78,6 +78,14 @@ object CsppTypeChecker {
       (env, Instrument(annotatedChannels, annotatedBody))
     }
 
+    case Sends(channel, expr) => {
+      val (annotatedChannel, _) = assertExpr(env, channel, "number", { case Number => () })
+      val (annotatedBody, _) = assertExpr(env, expr, "effect", { case Effect =>() })
+
+      // We return the old env, because the new identifiers are only in scope within the sends
+      (env, Sends(annotatedChannel, annotatedBody))
+    }
+
   }
 
   def annotateExpr(env: Env, expr: Expr): Expr = expr match {

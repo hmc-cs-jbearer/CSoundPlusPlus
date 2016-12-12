@@ -387,6 +387,7 @@ class TranslateSuite extends FunSuite with Matchers {
     "iamp ampmidi 1",
     "ifreq cpsmidi",
     "a0 cspp_source",
+    s"chout a0, $instrId",
     "out a0",
     "endin"
   )
@@ -405,6 +406,7 @@ class TranslateSuite extends FunSuite with Matchers {
       "ifreq cpsmidi",
       "a0 cspp_source",
       "a1 cspp_effect a0",
+      "chout a1, 1",
       "out a1",
       "endin",
       "i0 = 2.0",
@@ -463,6 +465,7 @@ class TranslateSuite extends FunSuite with Matchers {
       "ifreq cpsmidi",
       "i0 = iamp",
       "a0 cspp_source i0",
+      "chout a0, 1",
       "out a0",
       "endin",
 
@@ -484,6 +487,7 @@ class TranslateSuite extends FunSuite with Matchers {
       "ifreq cpsmidi",
       "i0 = ifreq",
       "a0 cspp_source i0",
+      "chout a0, 1",
       "out a0",
       "endin",
 

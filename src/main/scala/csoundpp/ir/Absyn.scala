@@ -60,6 +60,7 @@ case object Divide extends Bop
 abstract class Statement extends ASTElem
 case class Assignment(name: Ident, params: Seq[Ident], definition: Expr) extends Statement
 case class Instrument(channels: Seq[Expr], definition: Expr) extends Statement
+case class Sends(channel: Expr, definition: Expr) extends Statement
 
 /**
  * Identifiers must start with a letter, and can contain letters, numbers, and
