@@ -570,6 +570,11 @@ class ParserSuite extends FunSuite with Matchers {
     Seq(IDENT("instrument"), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~/> statement
   }
 
+  test("statement.sends") {
+    // sends(1) = foo
+    Seq(SENDS(), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~> Sends(Num(1), Var("foo"))
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Import tests
   //////////////////////////////////////////////////////////////////////////////////////////////////

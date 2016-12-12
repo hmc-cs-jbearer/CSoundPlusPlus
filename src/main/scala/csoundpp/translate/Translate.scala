@@ -171,9 +171,26 @@ object CsppTranslator {
     "ifreq cpsmidi" +:
     (log(INFO, "note_on", s"instr=$name amp=%f freq=%f", "iamp", "ifreq") ++
     body ++ Seq(
+    s"chout $outVar, $name", // Buffer output so other instruments can read it via channel
     s"out $outVar",
     "endin",
     "")) // End with a blank line just for readability
+
+  // Translate sends to an always on instrument which reads input from the corresponding channel
+  def sendsDefine(name: String, channel: CsLines, channelVar: String,
+                  body: CsLines, bodyIn: String, bodyOut: String) =
+    Seq(s"instr ${name}") ++
+    channel ++
+    Seq(s"$bodyIn channel $channelVar") ++
+    body ++ Seq(
+      s"out $bodyOut",
+      "endin",
+      "",
+      // Make sure instrument is always on, ready to receive input
+      s"; instr $name is always on; it monitors channel $channelVar for output",
+      s"turnon $name",
+      ""
+    )
 
   def translateStmtNodes(context: Context, nodes: Seq[StmtNode]): (Context, CsLines) =
     if (nodes.isEmpty) {
@@ -217,6 +234,26 @@ object CsppTranslator {
       val instrLines = instrDefine(instrId, body, outName)
       val (context3, channelLines) = translateChannels(context2, instrId, channels)
       (context3, instrLines ++ channelLines)
+    }
+
+    case SendsNode(inputs, outputs, Sends(channel, expr)) => {
+      require(inputs.length == 1)
+      require(outputs.length == 1)
+      val bodyIn = inputs.head
+      val bodyOut = outputs.head
+
+      val (context2, id) = instrName(context)
+
+      // Figure out which channel we are getting our input from
+      val (localContext, channelLines, channelVars) = translateExpr(context2, channel)
+      require(channelVars.length == 1)
+      val channelVar = channelVars.head
+
+      // Evaluate definition
+      val (_, bodyLines, _) = translateExpr(localContext, expr)
+
+      val instrLines = sendsDefine(id, channelLines, channelVar, bodyLines, bodyIn, bodyOut)
+      (context2, instrLines)
     }
   }
 

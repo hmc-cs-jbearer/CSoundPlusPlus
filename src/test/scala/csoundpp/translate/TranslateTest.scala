@@ -387,6 +387,7 @@ class TranslateSuite extends FunSuite with Matchers {
     "iamp ampmidi 1",
     "ifreq cpsmidi",
     "a0 cspp_source",
+    s"chout a0, $instrId",
     "out a0",
     "endin"
   )
@@ -405,6 +406,7 @@ class TranslateSuite extends FunSuite with Matchers {
       "ifreq cpsmidi",
       "a0 cspp_source",
       "a1 cspp_effect a0",
+      "chout a1, 1",
       "out a1",
       "endin",
       "i0 = 2.0",
@@ -463,6 +465,7 @@ class TranslateSuite extends FunSuite with Matchers {
       "ifreq cpsmidi",
       "i0 = iamp",
       "a0 cspp_source i0",
+      "chout a0, 1",
       "out a0",
       "endin",
 
@@ -484,6 +487,7 @@ class TranslateSuite extends FunSuite with Matchers {
       "ifreq cpsmidi",
       "i0 = ifreq",
       "a0 cspp_source i0",
+      "chout a0, 1",
       "out a0",
       "endin",
 
@@ -511,6 +515,54 @@ class TranslateSuite extends FunSuite with Matchers {
       "i1 = 4.0",
       "massign i1, 2"
     ))
+  }
+
+  test("statement.sends.chain") {
+    SendsNode(Seq("a0"), Seq("a2"), Sends(astNum(2),
+      CompNode(Seq("a0"), Seq("a2"), Chain(Seq(
+        CompNode(Seq("a0"), Seq("a1"), astVar("effect1", Effect)),
+        CompNode(Seq("a1"), Seq("a2"), astVar("effect2", Effect))
+      )) annotated Effect)
+    )) ~>  Seq(
+      s"instr 1",
+      s"a0 channel 2.0",
+      "a1 cspp_effect1 a0",
+      "a2 cspp_effect2 a1",
+      "out a2",
+      "endin",
+      "turnon 1"
+    )
+  }
+
+  test("statement.sends.numChannel") {
+    SendsNode(Seq("a0"), Seq("a1"), Sends(astNum(2),
+      CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect)))) ~>
+    Seq(
+      "instr 1",
+      "a0 channel 2.0",
+      "a1 cspp_effect a0",
+      "out a1",
+      "endin",
+      "turnon 1"
+    )
+  }
+
+  test("statement.sends.funcChannel") {
+    SendsNode(Seq("a0"), Seq("a1"), Sends(
+        Application(Ident("channel"), Seq(
+          astNum(2))
+        ) annotated Number,
+      CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect))
+    )) ~>
+    Seq(
+      "instr 1",
+      "i0 cspp_channel 2.0",
+      "a0 channel i0",
+      "a1 cspp_effect a0",
+      "out a1",
+      "endin",
+      "turnon 1"
+    )
   }
 
 }

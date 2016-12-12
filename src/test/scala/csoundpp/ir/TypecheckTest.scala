@@ -529,6 +529,80 @@ class TypecheckSuite extends FunSuite with Matchers {
     env("source1" -> Source, "effect1" -> Effect) ~> instr ~/> statement
   }
 
+  test("statement.sends.var") {
+    val channel = Num(1)
+    val body = Var(Ident("effect"))
+    val sends = Sends(channel, body)
+    val annotated = Sends(channel annotated Number, body annotated Effect)
+    env("effect" -> Effect) ~> sends ~> annotated
+  }
+
+  test("statement.sends.chain") {
+    val channel = Num(1)
+    val effect1 = Application(Ident("effect1"), Seq())
+    val effect2 = Application(Ident("effect2"), Seq())
+    val sends = Sends(channel, Chain(Seq(effect1, effect2)))
+    val annotated = Sends(
+                      channel annotated Number,
+                      Chain(Seq(
+                        effect1 annotated Effect,
+                        effect2 annotated Effect
+                      ))
+                    annotated Effect)
+
+    env("effect1" -> Effect, "effect2" -> Effect) ~> sends ~> annotated
+  }
+
+  test("statement.sends.varChannel") {
+    val channel = Var(Ident("channel"))
+    val body = Var(Ident("effect"))
+    val sends = Sends(channel, body)
+    val annotated = Sends(channel annotated Number, body annotated Effect)
+    env("effect" -> Effect, "channel" -> Number) ~> sends ~> annotated
+  }
+
+  test("statement.sends.invalid.illtypedChannel") {
+    val channel = Var(Ident("channel"))
+    val body = Var(Ident("effect"))
+    val sends = Sends(channel, body)
+    env("channel" -> Source, "effect" -> Effect) ~> sends ~/> statement
+  }
+
+  test("statement.sends.invalid.number") {
+    val channel = Num(1)
+    val body = Num(2)
+    val sends = Sends(channel, body)
+    env() ~> sends ~/> statement
+  }
+
+  test("statement.sends.invalid.sourceVar") {
+    val channel = Num(1)
+    val body = Var(Ident("source"))
+    val sends = Sends(channel, body)
+    env("source" -> Source) ~> sends ~/> statement
+  }
+
+  test("statement.sends.invalid.sourceChain") {
+    val channel = Num(1)
+    val body = Chain(Seq(Var("source"), Var("effect")))
+    val sends = Sends(channel, body)
+    env("source" -> Source, "effect" -> Effect) ~> sends ~/> statement
+  }
+
+  test("statement.sends.invalid.unknownVar") {
+    val channel = Num(1)
+    val body = Var(Ident("foo"))
+    val sends = Sends(channel, body)
+    env() ~> sends ~/> statement
+  }
+
+  test("statement.sends.invalid.manyOuts") {
+    val channel = Num(1)
+    val body = Parallel(Seq(Var("source"), Var("effect")))
+    val sends = Sends(channel, body)
+    env("source" -> Source, "effect" -> Effect) ~> sends ~/> statement
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Program tests
   //////////////////////////////////////////////////////////////////////////////////////////////////

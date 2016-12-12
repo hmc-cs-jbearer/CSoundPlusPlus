@@ -81,6 +81,7 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
 
   /**
    * <statement> := instr( <exprs> ) = <expr>
+   *              | sends( <expr> ) = <expr>
    *              | <ident>( <idents> ) = <expr>
    *              | <ident> = <expr>
    *
@@ -93,6 +94,8 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
   def statement: PackratParser[Statement] = located {
     ( (INSTR() ~> LPAREN() ~> rep1sep(expr, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
         ^^ { case n~v => Instrument(n, v) }
+    | (SENDS() ~> LPAREN() ~> expr <~ RPAREN()) ~ (EQUALS() ~> expr)
+        ^^ { case c~b => Sends(c, b) }
     | id ~ (LPAREN() ~> repsep(id, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
         ^^ { case n~p~v => Assignment(n, p, v) }
     | (id <~ EQUALS()) ~ expr ^^ { case n~v => Assignment(n, Seq(), v) }

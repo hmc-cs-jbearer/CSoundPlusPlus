@@ -162,6 +162,10 @@ class LexerSuite extends FunSuite with Matchers {
     "instr" ~> INSTR()
   }
 
+  test("tokens.sends") {
+    "sends" ~> SENDS()
+  }
+
   test("tokens.lparen") {
     "(" ~> LPAREN()
   }
