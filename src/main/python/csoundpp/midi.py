@@ -37,6 +37,12 @@ def appendFile(path, type=1):
         file = MidiFile(type=type)
     return FileWriter(path, file)
 
+def transposeFile(f, interval, type=1):
+    for track in f.tracks:
+        for m in track:
+            if hasattr(m, 'note'):
+                m.note += interval
+
 class Messages:
     '''
     Enumeration of message types
