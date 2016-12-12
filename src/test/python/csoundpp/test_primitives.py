@@ -46,5 +46,15 @@ class Amplitude(TestCase):
     def testSine(self):
         self.doTest('instr(1) = sine(amp, freq)')
 
-    def testAverage2(self):
-        self.doTest('instr(1) = { parallel { sine(amp, freq) sine(amp, freq * 2) } average }')
+    def testAverage4(self):
+        self.doTest('''
+            instr(1) = {
+                parallel {
+                    sine(amp, freq)
+                    sine(amp, freq * 2)
+                    sine(amp, freq * 3)
+                    sine(amp, freq * 4)
+                }
+                average
+            }
+        ''')

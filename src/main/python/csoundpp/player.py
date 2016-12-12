@@ -1,6 +1,6 @@
-import os
 import signal
 from subprocess import Popen, PIPE
+import sys
 
 from csoundpp.errors import SubprocessError
 from csoundpp.files import tempPath
@@ -31,7 +31,8 @@ def play(programFile, scoreFile, outFile):
         with open(orcFile, 'w') as f:
             f.write(program)
 
-        if os.name == "nt":
+        # Set up platform specific process signals
+        if sys.platform.startswith("win"):
             from subprocess import CREATE_NEW_PROCESS_GROUP
             kwargs = {"creationflags": CREATE_NEW_PROCESS_GROUP}
             killSig = signal.CTRL_C_EVENT
@@ -39,8 +40,16 @@ def play(programFile, scoreFile, outFile):
             kwargs = {}
             killSig = signal.SIGINT
 
+        # Set up platform specific shared library extensions
+        if sys.platform.startswith("win"):
+            libExt = "dll"
+        elif sys.platform.startswith("darwin"):
+            libExt = "dylib"
+        else:
+            libExt = "so"
+
         argv = ["csound",
-                "--opcode-lib=lib/libcsoundpp.so",
+                "--opcode-lib=lib/libcsoundpp." + libExt,
                 "--orc",
                 "-F", scoreFile,
                 "-o", outFile,
