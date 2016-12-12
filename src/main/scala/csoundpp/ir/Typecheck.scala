@@ -23,10 +23,19 @@ object CsppTypeChecker {
     addVars(new Env(),
       Ident("foscil") -> Function(Source, 4),
       Ident("sine") -> Function(Source, 2),
+      Ident("pulse") -> Function(Source, 2),
       Ident("sidechain_compress") -> Function(Component(2, 1), 5),
       Ident("compress") -> Function(Effect, 5),
       Ident("adsr") -> Function(Effect, 4),
-      Ident("average") -> Function(Component(2, 1), 0)
+      Ident("average") -> Function(Component(4, 1), 0),
+      Ident("delay") -> Function(Component(1, 1), 2),
+      Ident("reverb") -> Function(Component(1, 1), 1),
+      Ident("scale") -> Function(Component(1, 1), 1),
+      Ident("transpose") -> Function(Component(1, 1), 1),
+      Ident("filt") -> Function(Component(1, 1), 4),
+      Ident("sqrt") -> Function(Number, 1),
+      Ident("lopass_sweep") -> Function(Component(1, 1), 6),
+      Ident("sum") -> Function(Component(4, 1), 0)
     ),
   ast)
 

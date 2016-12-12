@@ -113,7 +113,7 @@ object CsoundMinifier extends JavaTokenParsers with RegexParsers with CsParsers 
     | "#" // Macro definition
     | "$" // Macro expansion
     | "'" // Macro argument separator
-    | "+" | "-" | "*" | "/" | "^" | "="
+    | "+" | "-" | "*" | "/" | "^" | "=" | "<" | ">"
     | "(" | ")"
     | ","
     | "!"

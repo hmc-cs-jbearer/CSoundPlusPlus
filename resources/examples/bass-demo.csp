@@ -1,0 +1,51 @@
+// The highest quality our filters allow with no resonance. Makes a filter act like a butterworth.
+butterQ = sqrt(0.5)
+
+/**
+ * A synthesizer whose output resembles that of an electric bass.
+ * Adapted from René Nyffenegger (http://www.adp-gmbh.ch/csound/instruments/bass01.html)
+ */
+bass(amp, freq) = {
+    // Oscillators
+    parallel {
+        pulse(amp * 0.4, (freq * 0.998) - 0.12)
+        sine(amp * 0.4, (freq * 1.002) - 0.12)
+        pulse(amp * 0.4, (freq * 1.002) - 0.12)
+        sine(amp * 0.7, (freq - 0.24))
+    }
+    average
+
+    // Filters
+    lopass_sweep(3000, 0.08, 9000, 0.1, 1, butterQ)
+    lopass_sweep(3000, 0.08, 9000, 0.1, 1, butterQ)
+    hipass(65, butterQ)
+    hipass(65, butterQ)
+    lopass(1000, butterQ)
+
+    // Envelope: linear rise and release; no decay; maximum sustain
+    adsr(0.02, 0, 1, 0.01)
+}
+
+inserts = {
+    // Compressor module
+    compress(40, 60, 3, 0.1, 0.01)
+
+    // Equalizer module
+    loshelf(200, 1.1, butterQ)
+    peaking(500, 1.2, butterQ)
+    lopass(1000, butterQ)
+
+    // We lost some energy through filtering, need to scale up
+    scale(3)
+}
+
+instr(1) = {
+    bass(amp, freq)
+    inserts
+}
+
+sends(1) = {
+    scale(0.1)
+    delay(0.2, 0.5)
+    reverb(1.5)
+}

@@ -11,6 +11,11 @@ nchnls = 1  ; Mono output (hopefully stereo sound will be supported in the futur
 massign 0, 0
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Wave tables used by built-in opcodes
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+gipulse ftgen 0, 0, 2048, 10, 1, 1, 1, 1, .7, .5, .3, .1
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Built in opcodes. All opcodes with a cspp_ prefix are visible to users via CSound++. For example,
 ; a reference to `fm` in CSound++ will compile to a call to the `cspp_fm` opcode.
 ; Opcodes prefixed with __cspp_ are not visible to the user, but are used in the implementation of
@@ -30,6 +35,19 @@ massign 0, 0
 opcode cspp_sine, a, ii
 iamp, ifreq xin
 asig oscil iamp, ifreq
+xout asig
+endop
+
+; pulse:
+;   A pulse train source.
+; Inputs:
+;   iamp: the amplitude of the signal, 0 to 1
+;   ifreq: the frequency of the signal in Hz.
+; Outputs:
+;   asig: a pulse train.
+opcode cspp_pulse, a, ii
+iamp, ifreq xin
+asig oscil iamp, ifreq, gipulse
 xout asig
 endop
 
@@ -62,46 +80,37 @@ endop
 ;   ifreq: the cutoff frequency (modes 0, 1, 5, 6) or center frequency (modes 2 - 4) in Hz.
 ;   ilvl: the amount of boost or cut. Must be > 0. ilvl == 1 results in a flat frequency response.
 ;   iq: the filter quality (ifreq / bandwidth)
-;   is: the shelf slope for modes 5 and 6. Must be > 0. is == 1 results in the steepest possible
-;       slope without resonance. is > 1 results in resonances.
-opcode __cspp_filt, a, aiiiii
-asig, imode, ifreq, ilvl, iq, is xin
+opcode cspp_filt, a, aiiii
+asig, imode, ifreq, ilvl, iq xin
 denorm asig
-asig rbjeq asig, ifreq, ilvl, iq, is, imode * 2
-xout asig
+
+; Csound has two main EQ filter types: rbjeq and pareq. pareq is easier to use but only supports
+; peaking and shelving filters. Thus we use it for those and use rbjeq for low pass, high pass
+; band pass, and band reject filters.
+if imode < 4 then
+    aflt rbjeq asig, ifreq, ilvl, iq, 0, imode * 2
+else
+    aflt pareq asig, ifreq, ilvl, iq, imode - 4
+endif
+
+xout aflt
 endop
 
-; Filter modes
-#define CSPP_FILT_LOPASS        #0#
-#define CSPP_FILT_HIPASS        #1#
-#define CSPP_FILT_BANDPASS      #2#
-#define CSPP_FILT_BANDREJECT    #3#
-#define CSPP_FILT_PEAKING       #4#
-#define CSPP_FILT_LOSHELF       #5#
-#define CSPP_FILT_HISHELF       #6#
-
-; Implementation for a low pass, high pass, band pass, or band reject filter.
-; Macro parameters:
-;   name: the name of the opcode to be generated.
-;   mode: the imode parameter of __cspp_filt.
+; transpose
+;   Scale the frequency of the input signal.
 ; Inputs:
-;   ifreq
-;   ilvl
-;   iq
-; The inputs have the same meaning as the corresponding inputs to __cspp_filt
-#define CSPP_FILT_IMPL(name' mode') #
-opcode cspp_$name, a, aiii
-asig, ifreq, ilvl, iq xin
-asig __cspp_filt asig, $mode, ifreq, ilvl, iq, 1
-xout asig
+;   iscl: a multiplicative factor by which to scale the frequencies of the given signal. So, for
+;       example, iscl = 2 would result in transposition up one octave, iscl = 0.5 would result in
+;       transposition down one octave, etc.
+opcode cspp_transpose, a, ai
+asig, iscl xin
+
+fsig  pvsanal   asig, 1024, 256, 1024, 1 ; transform the signal to the frequency domain
+ftps  pvscale   fsig, iscl, 1            ; transpose it keeping formants
+atps  pvsynth   ftps                     ; transform back to time domain
+
+xout atps
 endop
-#
-
-
-$CSPP_FILT_IMPL(lopass' $CSPP_FILT_LOPASS')
-$CSPP_FILT_IMPL(hipass' $CSPP_FILT_HIPASS')
-$CSPP_FILT_IMPL(bandpass' $CSPP_FILT_BANDPASS')
-$CSPP_FILT_IMPL(bandreject' $CSPP_FILT_BANDREJECT')
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; The following are higher-level opcodes, which are implemented in CSound but use some of CSound's
@@ -176,6 +185,58 @@ asig, iatt, idec, isus, irel xin
 
 kenv madsr iatt, idec, isus, irel
 xout kenv*asig
+endop
+
+; delay
+;   Simple delay line with feedback.
+; Inputs:
+;   asig: the signal to delay
+;   idlt: the delay time in seconds
+;   ifb:  the feedback level. Must be in [0, 1)
+opcode cspp_delay, a, aii
+asig, idlt, ifb xin
+adel init 0
+adel delay asig + (adel*ifb), idlt
+xout adel
+endop
+
+; reverb
+;   Reverberates an input signal with a “natural room” frequency response.
+; Inputs:
+;   irvt:
+opcode cspp_reverb, a, ai
+asig, irvt xin
+asig reverb asig, irvt
+xout asig
+endop
+
+; scale
+;   Scale the input signal by the given factor.
+; Inputs:
+;   ilvl: the multiplicative factor by which to scale.
+opcode cspp_scale, a, ai
+asig, ilvl xin
+xout asig * ilvl
+endop
+
+; lopass_sweep
+;   Temporarily in place for a demo, will be removed when control rate functions are added.
+opcode cspp_lopass_sweep, a, aiiiiii
+ain, ia, iadur, ib, irel, iz, iq xin
+k1 expsegr ia, iadur, ib, irel, iz
+ksweep = k1 - ia
+aout butterlp ain, ksweep
+xout aout
+endop
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Math functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; sqrt: compute the square root of a nonnegative number
+opcode cspp_sqrt, i, i
+input xin
+xout sqrt(input)
 endop
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
