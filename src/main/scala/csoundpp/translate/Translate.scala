@@ -80,7 +80,7 @@ object CsppTranslator {
   // Generate a local variable name that is unique to the given context
   def localAnon(context: Context) = {
     val id = context.locals
-    (context.copy(locals = id + 1), s"i$id")
+    (extendLocalScope(context.copy(locals = id + 1), id.toString), s"i$id")
   }
 
   def isLocal(context: Context, id: Ident) = context.localScope contains id
@@ -203,20 +203,28 @@ object CsppTranslator {
 
   def translateStmtNode(context: Context, node: StmtNode): (Context, CsLines) = node match {
     case AssignNode(inputs, outputs, Assignment(id, params, expr)) => {
-      val localContext = extendLocalScope(context, params)
+      val context2 = extendLocalScope(context, params)
 
       val name = opcodeName(id)
       val paramNames = params.map(_.name)
 
-      // We ignore the context we get out, because any locals defined in this body go out of scope
-      // at the end of the opcode definition. Thus, we can reuse their names in the next statement.
-      val (_, body, scalarOutputs) = translateExpr(localContext, expr)
+      val (context3, body, scalarOutputs) = translateExpr(context2, expr)
 
-      val opcodeLines = typeOf(expr) match {
-        case _: Component => component(name, inputs, paramNames, body, outputs)
-        case _            => function(name, paramNames, body, scalarOutputs.head)
+      val (context4, opcodeLines) = typeOf(expr) match {
+        case _: Component => (context3, component(name, inputs, paramNames, body, outputs))
+        case _            => {
+          // Csound will not let us "xout" a constant, we have to wrap it in an irate variable
+          if (Seq('i', 'k') contains scalarOutputs.head(0)) {
+            (context3, function(name, paramNames, body, scalarOutputs.head))
+          } else {
+            val (context4, outVar) = localAnon(context3)
+            (context4, function(name, paramNames, body :+ s"$outVar = ${scalarOutputs.head}", outVar))
+          }
+        }
       }
 
+      // We return the original context, because any locals defined in this body go out of scope
+      // at the end of the opcode definition. Thus, we can reuse their names in the next statement.
       (context, opcodeLines)
     }
 
@@ -277,8 +285,8 @@ object CsppTranslator {
    */
   def translateExpr(context: Context, expr: Expr): (Context, CsLines, Seq[String]) = expr match {
     case Num(n, _) => {
-      val (context2, outVar) = localAnon(context)
-      (context2, Seq(s"$outVar = $n"), Seq(outVar))
+      // You can just use the literal n in place of a variable containing the value n
+      (context, Seq(), Seq(n.toString))
     }
 
     case BinOp(l, op, r, _) => {
@@ -353,15 +361,11 @@ object CsppTranslator {
     if (isLocal(context, opName)) {
       require(args.length == 0) // Typechecker should have ensured this
       require(ty == Number)
-
-      val (context2, outName) = localAnon(context)
-      (context2, Seq(s"$outName = ${localName(opName)}"), Seq(outName))
+      (context, Seq(), Seq(localName(opName)))
     } else if (isGlobal(context, opName)) {
       require(args.length == 0) // Typechecker should have ensured this
       require(ty == Number)
-
-      val (context2, outName) = localAnon(context)
-      (context2, Seq(s"$outName = ${globalName(opName)}"), Seq(outName))
+      (context, Seq(), Seq(globalName(opName)))
     } else {
 
       val (context2, argLines, argNames) = translateArgs(context, args)

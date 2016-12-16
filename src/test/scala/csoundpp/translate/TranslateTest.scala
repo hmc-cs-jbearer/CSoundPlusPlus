@@ -69,7 +69,7 @@ class TranslateSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("expression.number") {
-    astNum(1) ~> "i0 = 1.0"
+    astNum(1) ~> ""
   }
 
   test("expression.var.number") {
@@ -86,9 +86,8 @@ class TranslateSuite extends FunSuite with Matchers {
       astVar("arg", Number))
     ) annotated Number) ~>
     Seq(
-        "i0 = 1.0",
-        "i1 cspp_arg",
-        "i2 cspp_foo i0, i1"
+        "i0 cspp_arg",
+        "i1 cspp_foo 1.0, i0"
       )
   }
 
@@ -99,9 +98,8 @@ class TranslateSuite extends FunSuite with Matchers {
       ) annotated Number)
     ) annotated Number) ~>
     Seq (
-      "i0 = 1.0",
-      "i1 cspp_bar i0",
-      "i2 cspp_foo i1"
+      "i0 cspp_bar 1.0",
+      "i1 cspp_foo i0"
     )
   }
 
@@ -111,9 +109,8 @@ class TranslateSuite extends FunSuite with Matchers {
       astVar("arg", Number))
     ) annotated Source) ~>
     Seq(
-      "i0 = 1.0",
-      "i1 cspp_arg",
-      "a0 cspp_source i0, i1"
+      "i0 cspp_arg",
+      "a0 cspp_source 1.0, i0"
     )
   }
 
@@ -124,9 +121,8 @@ class TranslateSuite extends FunSuite with Matchers {
       ) annotated Number)
     ) annotated Source) ~>
     Seq (
-      "i0 = 1.0",
-      "i1 cspp_arg i0",
-      "a0 cspp_source i1"
+      "i0 cspp_arg 1.0",
+      "a0 cspp_source i0"
     )
   }
 
@@ -136,9 +132,8 @@ class TranslateSuite extends FunSuite with Matchers {
       astVar("arg", Number))
     ) annotated Effect) ~>
     Seq(
-      "i0 = 1.0",
-      "i1 cspp_arg",
-      "a1 cspp_effect a0, i0, i1"
+      "i0 cspp_arg",
+      "a1 cspp_effect a0, 1.0, i0"
     )
   }
 
@@ -149,9 +144,8 @@ class TranslateSuite extends FunSuite with Matchers {
       ) annotated Number)
     ) annotated Effect) ~>
     Seq (
-      "i0 = 1.0",
-      "i1 cspp_arg i0",
-      "a1 cspp_effect a0, i1"
+      "i0 cspp_arg 1.0",
+      "a1 cspp_effect a0, i0"
     )
   }
 
@@ -239,7 +233,7 @@ class TranslateSuite extends FunSuite with Matchers {
   }
 
   def testBinOp(op: Bop, translatedOp: String) = {
-    astBinOp(astNum(1), op, astNum(2)) ~> Seq("i0 = 1.0", "i1 = 2.0", s"i2 = i0 $translatedOp i1")
+    astBinOp(astNum(1), op, astNum(2)) ~> Seq(s"i0 = 1.0 $translatedOp 2.0")
   }
 
   test("expression.arithmetic.binOp.plus") {
@@ -267,10 +261,8 @@ class TranslateSuite extends FunSuite with Matchers {
       ) annotated Number
     ) ~>
     Seq(
-      "i0 = 1.0",
-      "i1 = 2.0",
-      "i2 cspp_foo i1",
-      "i3 = i0 + i2"
+      "i0 cspp_foo 2.0",
+      "i1 = 1.0 + i0"
     )
   }
 
@@ -289,15 +281,9 @@ class TranslateSuite extends FunSuite with Matchers {
       )
     ) ~>
     Seq(
-      "i0 = 1.0",
-      "i1 = 2.0",
-      "i2 = i0 + i1",
-
-      "i3 = 3.0",
-      "i4 = 4.0",
-      "i5 = i3 - i4",
-
-      "i6 = i2 * i5"
+      "i0 = 1.0 + 2.0",
+      "i1 = 3.0 - 4.0",
+      "i2 = i0 * i1"
     )
   }
 
@@ -346,8 +332,7 @@ class TranslateSuite extends FunSuite with Matchers {
     scalarAssignment(Ident("foo"), Seq(Ident("arg")), astVar("arg", Number)) ~> Seq(
       "opcode cspp_foo, i, i",
       "iarg xin",
-      "i0 = iarg",
-      "xout i0",
+      "xout iarg",
       "endop"
     )
   }
@@ -360,8 +345,7 @@ class TranslateSuite extends FunSuite with Matchers {
     ) ~> Seq(
       "opcode cspp_foo, a, i",
       "iarg xin",
-      "i0 = iarg",
-      "a0 cspp_source i0",
+      "a0 cspp_source iarg",
       "xout a0",
       "endop"
     )
@@ -375,8 +359,7 @@ class TranslateSuite extends FunSuite with Matchers {
     ) ~> Seq(
       "opcode cspp_foo, a, ai",
       "a0, iarg xin",
-      "i0 = iarg",
-      "a1 cspp_effect a0, i0",
+      "a1 cspp_effect a0, iarg",
       "xout a1",
       "endop"
     )
@@ -409,8 +392,7 @@ class TranslateSuite extends FunSuite with Matchers {
       "chout a1, 1",
       "out a1",
       "endin",
-      "i0 = 2.0",
-      "massign i0, 1"
+      "massign 2.0, 1"
     )
   }
 
@@ -418,8 +400,7 @@ class TranslateSuite extends FunSuite with Matchers {
     InstrNode(Seq(), Seq("a0"), Instrument(Seq(astNum(2)),
       CompNode(Seq(), Seq("a0"), astVar("source", Source)))) ~>
     (sourceInstr ++ Seq(
-      "i0 = 2.0",
-      "massign i0, 1"
+      "massign 2.0, 1"
     ))
   }
 
@@ -433,9 +414,8 @@ class TranslateSuite extends FunSuite with Matchers {
       CompNode(Seq(), Seq("a0"), astVar("source", Source))
     )) ~>
     (sourceInstr ++ Seq(
-      "i0 = 2.0",
-      "i1 cspp_channel i0",
-      "massign i1, 1"
+      "i0 cspp_channel 2.0",
+      "massign i0, 1"
     ))
   }
 
@@ -445,10 +425,8 @@ class TranslateSuite extends FunSuite with Matchers {
       CompNode(Seq(), Seq("a0"), astVar("source", Source))
     )) ~>
     (sourceInstr ++ Seq(
-      "i0 = 2.0",
-      "massign i0, 1",
-      "i1 = 3.0",
-      "massign i1, 1"
+      "massign 2.0, 1",
+      "massign 3.0, 1"
     ))
   }
 
@@ -463,14 +441,12 @@ class TranslateSuite extends FunSuite with Matchers {
       "instr 1",
       "iamp ampmidi 1",
       "ifreq cpsmidi",
-      "i0 = iamp",
-      "a0 cspp_source i0",
+      "a0 cspp_source iamp",
       "chout a0, 1",
       "out a0",
       "endin",
 
-      "i0 = 2.0",
-      "massign i0, 1"
+      "massign 2.0, 1"
     )
   }
 
@@ -485,14 +461,12 @@ class TranslateSuite extends FunSuite with Matchers {
       "instr 1",
       "iamp ampmidi 1",
       "ifreq cpsmidi",
-      "i0 = ifreq",
-      "a0 cspp_source i0",
+      "a0 cspp_source ifreq",
       "chout a0, 1",
       "out a0",
       "endin",
 
-      "i0 = 2.0",
-      "massign i0, 1"
+      "massign 2.0, 1"
     )
   }
 
@@ -508,12 +482,10 @@ class TranslateSuite extends FunSuite with Matchers {
       ))
     ) ~>
     (sourceInstr ++ Seq(
-      "i0 = 3.0",
-      "massign i0, 1"
+      "massign 3.0, 1"
     ) ++
     sourceInstr("2") ++ Seq(
-      "i1 = 4.0",
-      "massign i1, 2"
+      "massign 4.0, 2"
     ))
   }
 
