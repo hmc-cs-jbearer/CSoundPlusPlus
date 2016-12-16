@@ -43,6 +43,17 @@ add_custom_command(
   COMMAND cmake -E touch bin/cspp.jar # It's possible that sbt determined that the jar was already
                                       # up to date. Touch it to tell cmake the dependency is satisfied
   DEPENDS ${SCALA_SRC} build.sbt project/plugins.sbt
-  COMMENT "Building cspp.jar."
+  COMMENT "Building cspp.jar"
 )
 add_custom_target(jar ALL DEPENDS bin/cspp.jar)
+
+# Test runners
+add_custom_target(unit-test sbt ${SBT_SCALA_VERSION} test COMMENT "Running unit tests")
+add_custom_target(unit-test-coverage sbt ${SBT_SCALA_VERSION} coverage test
+  COMMENT "Running unit tests with coverage reporting")
+add_custom_target(integration-test python3 -m nose -vv src/test/python/csoundpp DEPENDS jar csppstd
+  COMMENT "Running integration tests")
+add_custom_target(test-all DEPENDS unit-test integration-test)
+add_custom_target(test-all-coverage DEPENDS unit-test-coverage integration-test)
+add_custom_target(coverage-report sbt coverageReport coveralls
+    COMMENT "Uploading coverage report")

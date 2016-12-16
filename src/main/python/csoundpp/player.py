@@ -49,7 +49,7 @@ def play(programFile, scoreFile, outFile):
             libExt = "so"
 
         argv = ["csound",
-                "--opcode-lib=lib/libcsoundpp." + libExt,
+                "--opcode-lib=lib/libcsppstd." + libExt,
                 "--orc",
                 "-F", scoreFile,
                 "-o", outFile,

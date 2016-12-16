@@ -20,13 +20,10 @@ before_install:
   - sudo "$PIP3PATH" install -r requirements.txt
 
 script:
-  - set -e
-  - echo "Begin unit tests."; sbt "++$SCALA_VERSION" clean coverage test
-  - echo "Building cspp platform."; cmake CMakeLists.txt && make
-  - echo "Begin integration tests."; python3 -m nose -vv src/test/python/csoundpp
+  - cmake CMakeLists.txt && make test-all-coverage
 
 after_success:
-  - sbt coverageReport coveralls
+  - make coverage-report
 
 matrix:
   include:
