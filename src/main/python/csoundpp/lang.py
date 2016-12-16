@@ -8,8 +8,8 @@ def compile(file, program, *options):
         with open(programFile, 'w') as f:
             f.write(program)
 
-        argv = 'sbt "run compile {} {} -o {}"'.format(programFile, ' '.join(options), file)
-        proc = subprocess.Popen(argv, stderr=subprocess.PIPE, shell=True)
+        argv = ['java', '-jar', 'bin/cspp.jar', 'compile', programFile, '-o', file] + list(options)
+        proc = subprocess.Popen(argv, stderr=subprocess.PIPE)
         _, err = proc.communicate()
         status = proc.returncode
 

@@ -23,6 +23,9 @@ unmanagedClasspath in (Compile, runMain) += baseDirectory.value / "resources"
 
 assemblyOutputPath in assembly := baseDirectory.value / "bin" / "cspp.jar"
 
+// Do not unit test when building jar
+test in assembly := {}
+
 lazy val root = (project in file(".")).
   enablePlugins(BuildInfoPlugin).
   settings(

@@ -32,3 +32,6 @@ mkdir -p /Users/travis/bin
 sudo curl -s https://raw.githubusercontent.com/paulp/sbt-extras/master/sbt > /Users/travis/bin/sbt
 sudo chmod 0755 /Users/travis/bin/sbt
 which sbt || true
+
+# Install cmake
+brew install cmake

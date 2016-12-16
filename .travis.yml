@@ -19,12 +19,11 @@ before_install:
   - sudo "$PIP3PATH" install --upgrade pip
   - sudo "$PIP3PATH" install -r requirements.txt
 
-  - cmake CMakeLists.txt
-  - sudo make
-
 script:
-  - sbt "++$SCALA_VERSION" clean coverage test
-  - python3 -m nose -vv src/test/python/csoundpp
+  - set -e
+  - echo "Begin unit tests."; sbt "++$SCALA_VERSION" clean coverage test
+  - echo "Building cspp platform."; cmake CMakeLists.txt && make
+  - echo "Begin integration tests."; python3 -m nose -vv src/test/python/csoundpp
 
 after_success:
   - sbt coverageReport coveralls
@@ -39,6 +38,7 @@ matrix:
           packages:
             # NB: these packages only apply to the Linux build. If something changes here, it
             # probably needs to change in the bin/osx_install.sh script as well.
+            - csound
             - python3
             - python3-nose
             - python3-setuptools
