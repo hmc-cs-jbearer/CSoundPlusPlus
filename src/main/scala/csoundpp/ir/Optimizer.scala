@@ -39,11 +39,13 @@ trait Optimizers {
     stmtOptimization {
       case a @ Assignment(_, _, definition) => a copy (definition = optimize(definition))
 
-      case i @ Instrument(channels, definition) =>
+      case i @ Instrument(channels, definition, None) =>
         i copy (channels = channels.map(optimize _), definition = optimize(definition))
 
-      case s @ Sends(channel, definition) =>
-        s copy (optimize(channel), definition = optimize(definition))
+      case s @ Instrument(channels, definition, Some(sends)) =>
+        s copy (channels = channels.map(optimize _),
+                definition = optimize(definition),
+                sends = Some(optimize(sends)))
     }
   }
 

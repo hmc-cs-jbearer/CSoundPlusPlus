@@ -376,58 +376,15 @@ class DagSuite extends FunSuite with Matchers {
     )))
   }
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  // Sends tests
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-
-  test("sends.chain.flat.source") {
-    // sends(1) = {effect1 effect2}
-    Sends(astNum(1), Chain(Seq(
-      astVar("effect1", Effect),
-      astVar("effect2", Effect)
-    )) annotated Effect) ~>
-    SendsNode(Seq("a0"), Seq("a2"), Sends(astNum(1), CompNode(Seq("a0"), Seq("a2"), Chain(Seq(
-      CompNode(Seq("a0"), Seq("a1"), astVar("effect1", Effect)),
-      CompNode(Seq("a1"), Seq("a2"), astVar("effect2", Effect))
-    )) annotated Effect)))
-  }
-
-  test("sends.chain.nested.parallel") {
-    // instr(1) = { parallel {source effect} mux }
-    Sends(astNum(1), Chain(Seq(
-      Parallel(Seq(
-        astVar("source", Source),
-        astVar("effect", Effect)
-      )) annotated Component(1, 2),
-      astVar("mux", Component(2, 1))
-    )) annotated Effect) ~>
-    SendsNode(Seq("a0"), Seq("a3"), Sends(
-      astNum(1), CompNode(Seq("a0"), Seq("a3"), Chain(Seq(
-        CompNode(Seq("a0"), Seq("a1", "a2"), Parallel(Seq(
-          CompNode(Seq(), Seq("a1"), astVar("source", Source)),
-          CompNode(Seq("a0"), Seq("a2"), astVar("effect", Effect))
-        )) annotated Component(1, 2)),
-        CompNode(Seq("a1", "a2"), Seq("a3"), astVar("mux", Component(2, 1)))
-      )) annotated Effect
-    )))
-  }
-
-  test("sends.chain.nested.chain") {
-    // instr(1) = { { effect1 } effect2 }
-    Sends(astNum(1), Chain(Seq(
-      Chain(Seq(
-        astVar("effect1", Effect)
-      )) annotated Effect,
-      astVar("effect2", Effect)
-    )) annotated Effect) ~>
-    SendsNode(Seq("a0"), Seq("a2"), Sends(
-      astNum(1), CompNode(Seq("a0"), Seq("a2"), Chain(Seq(
-        CompNode(Seq("a0"), Seq("a1"), Chain(Seq(
-          CompNode(Seq("a0"), Seq("a1"), astVar("effect1", Effect))
-        )) annotated Effect),
-        CompNode(Seq("a1"), Seq("a2"), astVar("effect2", Effect))
-      )) annotated Effect
-    )))
+  test("instrument.sends") {
+    Instrument(Seq(astNum(1)), astVar("foo", Component(0, 1)), Some(astVar("bar", Effect))) ~>
+      InstrNode(
+        Seq(), Seq("a0"), Instrument(Seq(astNum(1)), CompNode(
+          Seq(), Seq("a0"), astVar("foo", Component(0, 1))
+        ), Some(CompNode(
+          Seq("a0"), Seq("a1"), astVar("bar", Effect)
+        )))
+      )
   }
 
 }

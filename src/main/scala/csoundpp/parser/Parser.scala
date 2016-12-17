@@ -80,8 +80,7 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
     }
 
   /**
-   * <statement> := instr( <exprs> ) = <expr>
-   *              | sends( <expr> ) = <expr>
+   * <statement> := instr( <exprs> ) = <expr> <inserts_opt> <sends_opt>
    *              | <ident>( <idents> ) = <expr>
    *              | <ident> = <expr>
    *
@@ -92,10 +91,11 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
    *           | <ident>, <idents>
    */
   def statement: PackratParser[Statement] = located {
-    ( (INSTR() ~> LPAREN() ~> rep1sep(expr, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
-        ^^ { case n~v => Instrument(n, v) }
-    | (SENDS() ~> LPAREN() ~> expr <~ RPAREN()) ~ (EQUALS() ~> expr)
-        ^^ { case c~b => Sends(c, b) }
+    ( (INSTR() ~> LPAREN() ~> rep1sep(expr, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr) ~
+      opt(INSERTS() ~> expr) ~ opt(SENDS() ~> expr) ^^ {
+        case n~v~Some(i)~s => Instrument(n, Chain(Seq(v, i)), s)
+        case n~v~None~s    => Instrument(n, v, s)
+      }
     | id ~ (LPAREN() ~> repsep(id, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
         ^^ { case n~p~v => Assignment(n, p, v) }
     | (id <~ EQUALS()) ~ expr ^^ { case n~v => Assignment(n, Seq(), v) }

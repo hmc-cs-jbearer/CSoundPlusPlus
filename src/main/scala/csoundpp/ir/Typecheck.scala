@@ -70,7 +70,7 @@ object CsppTypeChecker {
       (addVars(env, id -> ty), Assignment(id, params, annotated))
     }
 
-    case Instrument(channels, expr) => {
+    case Instrument(channels, expr, sends) => {
       val annotatedChannels = channels.map(
         assertExpr(env, _: Expr, "number", { case Number => () })._1)
 
@@ -83,16 +83,13 @@ object CsppTypeChecker {
 
       val (annotatedBody, _) = assertExpr(localEnv, expr, "source", { case Source => () })
 
+      val annotatedSends = sends match {
+        case Some(s) => Some(assertExpr(localEnv, s, "effect", { case Effect => () })._1)
+        case None    => None
+      }
+
       // We return the old env, because the new identifiers are only in scope within the instrument
-      (env, Instrument(annotatedChannels, annotatedBody))
-    }
-
-    case Sends(channel, expr) => {
-      val (annotatedChannel, _) = assertExpr(env, channel, "number", { case Number => () })
-      val (annotatedBody, _) = assertExpr(env, expr, "effect", { case Effect =>() })
-
-      // We return the old env, because the new identifiers are only in scope within the sends
-      (env, Sends(annotatedChannel, annotatedBody))
+      (env, Instrument(annotatedChannels, annotatedBody, annotatedSends))
     }
 
   }

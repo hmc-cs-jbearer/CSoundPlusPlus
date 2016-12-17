@@ -540,6 +540,25 @@ class ParserSuite extends FunSuite with Matchers {
       )))
   }
 
+  test("statement.instrument.inserts") {
+    // instr(1) = foo inserts bar
+    Seq(INSTR(), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo"), INSERTS(), IDENT("bar")) ~>
+      Instrument(Seq(Num(1)), Chain(Seq(Var("foo"), Var("bar"))))
+  }
+
+  test("statement.instrument.sends") {
+    // instr(1) = foo sends bar
+    Seq(INSTR(), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo"), SENDS(), IDENT("bar")) ~>
+      Instrument(Seq(Num(1)), Var("foo"), Some(Var("bar")))
+  }
+
+  test("statement.instruments.insertsAndSends") {
+    // instr(1) = foo inserts bar sends baz
+    Seq(INSTR(), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo"),
+      INSERTS(), IDENT("bar"), SENDS(), IDENT("baz")) ~>
+      Instrument(Seq(Num(1)), Chain(Seq(Var("foo"), Var("bar"))), Some(Var("baz")))
+  }
+
   test("statement.instrument.invalid.noChannels") {
     // instr() = foo
     Seq(INSTR(), LPAREN(), RPAREN(), EQUALS(), IDENT("foo")) ~/> statement
@@ -568,11 +587,6 @@ class ParserSuite extends FunSuite with Matchers {
   test("statement.instrument.invalid.wrongKeyword") {
     // instrument(1) = foo
     Seq(IDENT("instrument"), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~/> statement
-  }
-
-  test("statement.sends") {
-    // sends(1) = foo
-    Seq(SENDS(), LPAREN(), NUMBER(1), RPAREN(), EQUALS(), IDENT("foo")) ~> Sends(Num(1), Var("foo"))
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////

@@ -489,52 +489,56 @@ class TranslateSuite extends FunSuite with Matchers {
     ))
   }
 
-  test("statement.sends.chain") {
-    SendsNode(Seq("a0"), Seq("a2"), Sends(astNum(2),
-      CompNode(Seq("a0"), Seq("a2"), Chain(Seq(
-        CompNode(Seq("a0"), Seq("a1"), astVar("effect1", Effect)),
-        CompNode(Seq("a1"), Seq("a2"), astVar("effect2", Effect))
-      )) annotated Effect)
-    )) ~>  Seq(
-      s"instr 1",
-      s"a0 channel 2.0",
-      "a1 cspp_effect1 a0",
-      "a2 cspp_effect2 a1",
-      "out a2",
-      "endin",
-      "turnon 1"
-    )
-  }
+  test("statement.insrument.sends.oneChannel") {
+    InstrNode(Seq(), Seq("a0"), Instrument(Seq(astNum(2)),
+      CompNode(Seq(), Seq("a0"), astVar("source", Source)),
+      Some(CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect))))) ~>
+    (sourceInstr ++ Seq(
+      "massign 2.0, 1"
+    ) ++ Seq(
+      "opcode sends1, a, a",
+      "a0 xin",
+      "a1 cspp_effect a0",
+      "xout a1",
+      "endop",
 
-  test("statement.sends.numChannel") {
-    SendsNode(Seq("a0"), Seq("a1"), Sends(astNum(2),
-      CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect)))) ~>
-    Seq(
-      "instr 1",
+      "instr 2",
       "a0 channel 2.0",
-      "a1 cspp_effect a0",
+      "a1 sends1 a0",
       "out a1",
       "endin",
-      "turnon 1"
-    )
+      "turnon 2"
+    ))
   }
 
-  test("statement.sends.funcChannel") {
-    SendsNode(Seq("a0"), Seq("a1"), Sends(
-        Application(Ident("channel"), Seq(
-          astNum(2))
-        ) annotated Number,
-      CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect))
-    )) ~>
-    Seq(
-      "instr 1",
-      "i0 cspp_channel 2.0",
-      "a0 channel i0",
+  test("statement.isntrument.sends.manyChannels") {
+    InstrNode(Seq(), Seq("a0"), Instrument(Seq(astNum(2), astNum(3)),
+      CompNode(Seq(), Seq("a0"), astVar("source", Source)),
+      Some(CompNode(Seq("a0"), Seq("a1"), astVar("effect", Effect))))) ~>
+    (sourceInstr ++ Seq(
+      "massign 2.0, 1",
+      "massign 3.0, 1"
+    ) ++ Seq(
+      "opcode sends1, a, a",
+      "a0 xin",
       "a1 cspp_effect a0",
+      "xout a1",
+      "endop",
+
+      "instr 2",
+      "a0 channel 2.0",
+      "a1 sends1 a0",
       "out a1",
       "endin",
-      "turnon 1"
-    )
+      "turnon 2",
+
+      "instr 3",
+      "a0 channel 3.0",
+      "a1 sends1 a0",
+      "out a1",
+      "endin",
+      "turnon 3"
+    ))
   }
 
 }

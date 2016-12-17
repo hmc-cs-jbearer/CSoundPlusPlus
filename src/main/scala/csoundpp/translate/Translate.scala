@@ -177,19 +177,19 @@ object CsppTranslator {
     "")) // End with a blank line just for readability
 
   // Translate sends to an always on instrument which reads input from the corresponding channel
-  def sendsDefine(name: String, channel: CsLines, channelVar: String,
-                  body: CsLines, bodyIn: String, bodyOut: String) =
-    Seq(s"instr ${name}") ++
-    channel ++
-    Seq(s"$bodyIn channel $channelVar") ++
-    body ++ Seq(
-      s"out $bodyOut",
-      "endin",
-      "",
-      // Make sure instrument is always on, ready to receive input
-      s"; instr $name is always on; it monitors channel $channelVar for output",
-      s"turnon $name",
-      ""
+  def sendsDefine(name: String, channel: CsLines, channelVar: String, opcode: String) =
+    Seq(
+    s"instr ${name}") ++
+    channel ++ Seq(
+    s"a0 channel $channelVar",
+    s"a1 $opcode a0",
+    "out a1",
+    "endin",
+    "",
+    // Make sure instrument is always on, ready to receive input
+    s"; instr $name is always on; it monitors channel $channelVar for output",
+    s"turnon $name",
+    ""
     )
 
   def translateStmtNodes(context: Context, nodes: Seq[StmtNode]): (Context, CsLines) =
@@ -228,7 +228,7 @@ object CsppTranslator {
       (context, opcodeLines)
     }
 
-    case InstrNode(inputs, outputs, Instrument(channels, expr)) => {
+    case InstrNode(inputs, outputs, Instrument(channels, expr, sends)) => {
       require(inputs.length == 0)
       require(outputs.length == 1)
       val outName = outputs.head
@@ -241,28 +241,15 @@ object CsppTranslator {
 
       val instrLines = instrDefine(instrId, body, outName)
       val (context3, channelLines) = translateChannels(context2, instrId, channels)
-      (context3, instrLines ++ channelLines)
+
+      val (context4, sendsLines) = sends match {
+        case None => (context3, Seq())
+        case Some(s) => translateSends(context3, instrId, channels, s)
+      }
+
+      (context4, instrLines ++ channelLines ++ sendsLines)
     }
 
-    case SendsNode(inputs, outputs, Sends(channel, expr)) => {
-      require(inputs.length == 1)
-      require(outputs.length == 1)
-      val bodyIn = inputs.head
-      val bodyOut = outputs.head
-
-      val (context2, id) = instrName(context)
-
-      // Figure out which channel we are getting our input from
-      val (localContext, channelLines, channelVars) = translateExpr(context2, channel)
-      require(channelVars.length == 1)
-      val channelVar = channelVars.head
-
-      // Evaluate definition
-      val (_, bodyLines, _) = translateExpr(localContext, expr)
-
-      val instrLines = sendsDefine(id, channelLines, channelVar, bodyLines, bodyIn, bodyOut)
-      (context2, instrLines)
-    }
   }
 
   // Generate CSound code to map channels indicated by channels to the given instrument
@@ -277,6 +264,38 @@ object CsppTranslator {
       (context3, mapLines ++ restLines)
     }
   }
+
+  // Generate CSound code to create a sends instrument for each channel
+  def translateSends(context: Context, instr: String, channels: Seq[Expr], sends: Expr): (Context, CsLines) = {
+    val (_, bodyLines, outputs) = translateExpr(context, sends)
+
+    val inputs = sends match {
+      case CompNode(in, _, _) => in
+      case _ => throw new CsppTranslateError(
+        sends.loc, "Sends expression was not translated to DAG node.")
+    }
+
+    val opcodeLines = s"; Sends effects for instrument $instr" +:
+      component(s"sends$instr", inputs, Seq(), bodyLines, outputs)
+
+    val (context2, instrLines) = translateSends(context, channels, s"sends$instr")
+
+    (context2, opcodeLines ++ instrLines)
+  }
+
+  def translateSends(context: Context, channels: Seq[Expr], sendsInstr: String): (Context, CsLines) =
+    if (channels.isEmpty) {
+      (context, Seq())
+    } else {
+      val (context2, channelLines, channelVars) = translateExpr(context, channels.head)
+      require(channelVars.length == 1)
+      val channelVar = channelVars.head
+
+      val (context3, newInstr) = instrName(context2)
+      val headLines = sendsDefine(newInstr, channelLines, channelVar, sendsInstr)
+      val (context4, tailLines) = translateSends(context3, channels.tail, sendsInstr)
+      (context4, headLines ++ tailLines)
+    }
 
   /**
    * Generate code to store the value of expr in one or more local variables.

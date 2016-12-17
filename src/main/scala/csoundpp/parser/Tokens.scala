@@ -15,6 +15,7 @@ case class FILE(str: String) extends CsppToken(s"file ($str)")
 // Sadly, these must all be case classes (not objects) because they have a mutable position field
 case class IMPORT() extends CsppToken("keyword (import)")
 case class INSTR() extends CsppToken("keyword (instr)")
+case class INSERTS() extends CsppToken("keyword (inserts)")
 case class SENDS() extends CsppToken("keyword (sends)")
 case class PARALLEL() extends CsppToken("keyword (parallel)")
 case class LPAREN() extends CsppToken("(")

@@ -24,8 +24,6 @@ object CsppDagNodes {
 
   case class InstrNode(inputs: Seq[String], outputs: Seq[String], instrument: Instrument)
     extends StmtNode
-
-  case class SendsNode(inputs: Seq[String], outputs: Seq[String], sends: Sends) extends StmtNode
 }
 
 /**
@@ -100,19 +98,26 @@ object CsppDag {
       AssignNode(inputs, outputs, Assignment(name, params, transformedBody))
     }
 
-    case i @ Instrument(channels, body) => {
+    case i @ Instrument(channels, body, sends) => {
       // An instrument must be of component type
       val inArity = getType(body, "source", { case Component(in, _) => in })
       val (context, inputs) = signalAnons(EmptyContext, inArity)
       val (_, transformedBody, outputs) = transformExpr(context, body, inputs)
-      InstrNode(inputs, outputs, Instrument(channels, transformedBody))
-    }
 
-    case s @ Sends(channel, body) => {
-      val inArity = getType(body, "effect", { case Component(in, _) => in })
-      val (context, inputs) = signalAnons(EmptyContext, inArity)
-      val (_, transformedBody, outputs) = transformExpr(context, body, inputs)
-      SendsNode(inputs, outputs, Sends(channel, transformedBody))
+      val transformedSends = sends match {
+        case None => None
+        case Some(s) => {
+          val inArity = getType(s, "effect", { case Component(in, _) => in })
+
+          // The sends block will be translated as a separate instrument, so we can start with a
+          // fresh context.
+          val (context, inputs) = signalAnons(EmptyContext, inArity)
+          val (_, transformedSends, _) = transformExpr(context, s, inputs)
+          Some(transformedSends)
+        }
+      }
+
+      InstrNode(inputs, outputs, Instrument(channels, transformedBody, transformedSends))
     }
 
   }

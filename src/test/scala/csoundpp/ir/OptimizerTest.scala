@@ -89,7 +89,10 @@ class OptimizerSuite extends FunSuite with Matchers {
   }
 
   test("typeAnnotations.statement.sends") {
-    val stmt = Sends(Num(1) annotated Number, astVar("foo") annotated Effect)
+    val stmt = Instrument(Seq(Num(1) annotated Number),
+      astVar("foo") annotated Source,
+      Some(astVar("bar") annotated Effect)
+    )
     stmt ~> stmt
   }
 

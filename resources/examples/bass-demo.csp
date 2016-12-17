@@ -26,7 +26,9 @@ bass(amp, freq) = {
     adsr(0.02, 0, 1, 0.01)
 }
 
-inserts = {
+instr(1) = {
+    bass(amp, freq)
+} inserts {
     // Compressor module
     compress(40, 60, 3, 0.1, 0.01)
 
@@ -37,14 +39,7 @@ inserts = {
 
     // We lost some energy through filtering, need to scale up
     scale(3)
-}
-
-instr(1) = {
-    bass(amp, freq)
-    inserts
-}
-
-sends(1) = {
+} sends {
     scale(0.1)
     delay(0.2, 0.5)
     reverb(1.5)
