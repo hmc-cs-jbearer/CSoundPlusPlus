@@ -7,7 +7,7 @@ import org.scalatest.Matchers
 import absyn._
 import AbsynSugar._
 import csound.CsoundMinifier
-import CsppDagNodes._
+import CsppDag.Nodes._
 
 class TranslateSuite extends FunSuite with Matchers {
 

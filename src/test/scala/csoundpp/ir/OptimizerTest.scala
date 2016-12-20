@@ -76,6 +76,13 @@ class OptimizerSuite extends FunSuite with Matchers {
     expr ~> expr
   }
 
+  test("typeAnnotations.let") {
+    val expr = Let(Seq(
+      Assignment("foo", Seq(), Num(1) annotated Number)),
+      Application("bar", Seq(astVar("foo") annotated Number)) annotated Source)
+    expr ~> expr
+  }
+
   test("typeAnnotations.statement.assignment") {
     val stmt = Assignment("foo", Seq(),
       BinOp(astVar("bar") annotated Number, Plus, Num(1) annotated Number) annotated Number)

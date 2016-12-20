@@ -5,7 +5,7 @@ import scala.util.parsing.input.Positional
 
 import absyn._
 import AbsynSugar._
-import CsppDagNodes._
+import CsppDag.Nodes._
 
 object CsppTranslator {
 
@@ -350,6 +350,8 @@ object CsppTranslator {
 
     case p: Parallel =>
       throw new CsppTranslateError(expr.loc, "Parallel expression was not transformed to DAG node.")
+
+    case _: Let => throw new CsppTranslateError(expr.loc, "Unresolved let.")
   }
 
   def translateBlock(

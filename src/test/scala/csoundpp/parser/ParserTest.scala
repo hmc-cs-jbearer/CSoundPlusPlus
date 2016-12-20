@@ -382,6 +382,45 @@ class ParserSuite extends FunSuite with Matchers {
     ) ~/> expr
   }
 
+  test("expressions.let.oneBinding") {
+    // let x = 5 in y
+    Seq(LET(), IDENT("x"), EQUALS(), NUMBER(5), IN(), IDENT("y")) ~>
+      Let(Seq(Assignment("x", Seq(), Num(5))), Var("y"))
+  }
+
+  test("expressions.let.manyBindings") {
+    // let { x = 5 y = 6 } in z
+    Seq(LET(),
+      LBRACE(), IDENT("x"), EQUALS(), NUMBER(5), IDENT("y"), EQUALS(), NUMBER(6), RBRACE(),
+    IN(),
+      IDENT("z")) ~>
+    Let(Seq(Assignment("x", Seq(), Num(5)), Assignment("y", Seq(), Num(6))), Var("z"))
+  }
+
+  test("expressions.let.function") {
+    // let s(x) = x + 1 in s(5)
+    Seq(LET(),
+      IDENT("s"), LPAREN(), IDENT("x"), RPAREN(), EQUALS(), IDENT("x"), PLUS(), NUMBER(1),
+    IN(),
+      IDENT("s"), LPAREN(), NUMBER(5), RPAREN()) ~>
+    Let(Seq(Assignment("s", Seq("x"), BinOp(Var("x"), Plus, Num(1)))), Application("s", Seq(Num(5))))
+  }
+
+  test("expressions.let.invalid.noBinding") {
+    // let in x
+    Seq(LET(), IN(), IDENT("x")) ~/> expr
+  }
+
+  test("expressions.let.invalid.noBody.1") {
+    // let x = 5
+    Seq(LET(), IDENT("x"), EQUALS(), NUMBER(5)) ~/> expr
+  }
+
+  test("expressions.let.invalid.noBody.2") {
+    // let x = 5 in
+    Seq(LET(), IDENT("x"), EQUALS(), NUMBER(5), IN()) ~/> expr
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Arithmetic tests
   //////////////////////////////////////////////////////////////////////////////////////////////////

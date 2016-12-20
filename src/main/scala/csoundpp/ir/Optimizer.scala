@@ -21,17 +21,24 @@ trait Optimizers {
       e match {
         case n: Num => maybeXform(n)
 
-        case b @ BinOp(l, _, r, _) => maybeXform(b.copy(left = bottomUp(l), right = bottomUp(r)))
+        case b @ BinOp(l, _, r, _) => maybeXform(b.copy(left = optimize(l), right = optimize(r)))
 
-        case c @ Chain(body, _) => maybeXform(c.copy(body = body map (bottomUp _)))
+        case c @ Chain(body, _) => maybeXform(c.copy(body = body map (optimize _)))
 
-        case p @ Parallel(body, _) => maybeXform(p.copy(body = body map (bottomUp _)))
+        case p @ Parallel(body, _) => maybeXform(p.copy(body = body map (optimize _)))
 
-        case a @ Application(_, args, _) => maybeXform(a.copy(args = args map (bottomUp _)))
+        case a @ Application(_, args, _) => maybeXform(a.copy(args = args map (optimize _)))
+
+        case l @ Let(bindings, body, _) => maybeXform(l.copy(
+          bindings = bindings map {
+            case a @ Assignment(_, _, definition) => a copy (definition = optimize(definition))
+          },
+          body = optimize(body)
+        ))
       }
     }
 
-    def optimize(e: Expr) = e.ty match {
+    def optimize(e: Expr): Expr = e.ty match {
       case Some(ty) => bottomUp(e) annotated ty
       case None     => bottomUp(e)
     }

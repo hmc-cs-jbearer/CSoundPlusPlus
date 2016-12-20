@@ -324,6 +324,68 @@ class TypecheckSuite extends FunSuite with Matchers {
     env("source" -> Source) ~> BinOp(Num(42), Plus, Var("source")) ~/> expr
   }
 
+  test("expression.let.newBinding") {
+    val binding = Assignment("x", Seq(), Num(5))
+    val expr = Var("x")
+    val let = Let(Seq(binding), expr)
+    val annotatedLet = Let(
+      Seq(Assignment("x", Seq(), Num(5) annotated Number)),
+      expr annotated Number
+    ) annotated Number
+    env() ~> let ~> annotatedLet
+  }
+
+  test("expression.let.shadow") {
+    val binding = Assignment("x", Seq(), Num(5))
+    val expr = Var("x")
+    val let = Let(Seq(binding), expr)
+    val annotatedLet = Let(
+      Seq(Assignment("x", Seq(), Num(5) annotated Number)),
+      expr annotated Number
+    ) annotated Number
+    env("x" -> Source) ~> let ~> annotatedLet
+  }
+
+  test("expression.let.immediatelyInScope") {
+    val binding1 = Assignment("x", Seq(), Num(5))
+    val annotatedBinding1 = Assignment("x", Seq(), Num(5) annotated Number)
+
+    val binding2 = Assignment("y", Seq(), Var("x"))
+    val annotatedBinding2 = Assignment("y", Seq(), Var("x") annotated Number)
+
+    val expr = Var("y")
+    val let = Let(Seq(binding1, binding2), expr)
+    val annotatedLet =
+      Let(Seq(annotatedBinding1, annotatedBinding2), expr annotated Number) annotated Number
+    env() ~> let ~> annotatedLet
+  }
+
+  test("expression.let.function") {
+    val binding = Assignment("s", Seq("x"), BinOp(Var("x"), Plus, Num(1)))
+    val annotatedBinding = Assignment("s", Seq("x"),
+      BinOp(Var("x") annotated Number, Plus, Num(1) annotated Number) annotated Number)
+    val expr = Application("s", Seq(Num(5)))
+    val annotatedExpr = Application("s", Seq(Num(5) annotated Number)) annotated Number
+    val let = Let(Seq(binding), expr)
+    val annotatedLet = Let(Seq(annotatedBinding), annotatedExpr) annotated Number
+    env() ~> let ~> annotatedLet
+  }
+
+  test("expression.let.invalid.redefiniton") {
+    env() ~> Let(Seq(
+      Assignment("x", Seq(), Num(5)),
+      Assignment("x", Seq(), Num(6))
+    ), Var("x")) ~/> expr
+  }
+
+  test("expression.let.invalid.unknown.inBinding") {
+    env() ~> Let(Seq(Assignment("x", Seq(), Var("y"))), Var("x")) ~/> expr
+  }
+
+  test("expression.let.invalid.unknown.inBody") {
+    env() ~> Let(Seq(Assignment("x", Seq(), Num(5))), Var("y")) ~/> expr
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Statement tests
   //////////////////////////////////////////////////////////////////////////////////////////////////

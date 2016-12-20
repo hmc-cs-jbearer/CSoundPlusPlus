@@ -47,6 +47,10 @@ case class Num(value: Double, ty: Option[CsppType] = None) extends Expr {
   def annotated(newTy: CsppType) = Num(value, Some(newTy))
 }
 
+case class Let(bindings: Seq[Assignment], body: Expr, ty: Option[CsppType] = None) extends Expr {
+  def annotated(newTy: CsppType) = Let(bindings, body, Some(newTy))
+}
+
 abstract class Bop
 case object Plus extends Bop
 case object Minus extends Bop

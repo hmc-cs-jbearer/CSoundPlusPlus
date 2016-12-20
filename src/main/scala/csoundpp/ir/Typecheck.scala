@@ -58,17 +58,7 @@ object CsppTypeChecker {
 
   def annotateStmt(env: Env, stmt: Statement): (Env, Statement) = stmt match {
 
-    case Assignment(id, params, expr) => {
-      // The params are in scope within the definition, so we have to annotate expr with an
-      // extended environment which accounts for this
-      val newBindings = for {
-        param <- params
-      } yield param -> Function(Number, 0)
-      val newEnv = addVars(env, newBindings: _*)
-      val annotated = annotateExpr(newEnv, expr)
-      val ty = Function(typeOf(annotated), params.length)
-      (addVars(env, id -> ty), Assignment(id, params, annotated))
-    }
+    case a: Assignment => annotateAssignment(env, a)
 
     case Instrument(channels, expr, sends) => {
       val annotatedChannels = channels.map(
@@ -92,6 +82,21 @@ object CsppTypeChecker {
       (env, Instrument(annotatedChannels, annotatedBody, annotatedSends))
     }
 
+  }
+
+  def annotateAssignment(env: Env, stmt: Assignment, shadow: Boolean = false): (Env, Assignment) = {
+    val Assignment(id, params, expr) = stmt
+
+    // The params are in scope within the definition, so we have to annotate expr with an
+    // extended environment which accounts for this
+    val newBindings = for {
+      param <- params
+    } yield param -> Function(Number, 0)
+    val newEnv = addVars(env, newBindings: _*)
+    val annotated = annotateExpr(newEnv, expr)
+    val ty = Function(typeOf(annotated), params.length)
+    val env2 = if (shadow) shadowVars(env, id -> ty) else addVars(env, id -> ty)
+    (env2, Assignment(id, params, annotated))
   }
 
   def annotateExpr(env: Env, expr: Expr): Expr = expr match {
@@ -137,7 +142,35 @@ object CsppTypeChecker {
 
       Parallel(annotatedInputs) annotated Component(inArity, outArity)
     }
+
+    case Let(bindings, body, _) => {
+      // Bindings in a let statement can shadow variables from an outerscope, but must be unique
+      // amongst each other
+      assertDistinct(bindings)
+      val (localEnv, annotatedBindings) = annotateBindings(env, bindings)
+      val annotatedBody = annotateExpr(localEnv, body)
+      Let(annotatedBindings, annotatedBody) annotated typeOf(annotatedBody)
+    }
   }
+
+  def assertDistinct(toCheck: Seq[Assignment], checked: Set[Ident] = Set()): Unit =
+    if (!toCheck.isEmpty) {
+      val Assignment(id, _, _) = toCheck.head
+      if (checked contains id) {
+        throw new CsppTypeError(toCheck.head.loc, s"Redefinition of ${id.name}.")
+      } else {
+        assertDistinct(toCheck.tail, checked + id)
+      }
+    }
+
+  def annotateBindings(env: Env, bindings: Seq[Assignment]): (Env, Seq[Assignment]) =
+    if (bindings.isEmpty) {
+      (env, Seq())
+    } else {
+      val (env2, annotatedHead) = annotateAssignment(env, bindings.head, shadow = true)
+      val (env3, annotatedTail) = annotateBindings(env2, bindings.tail)
+      (env3, annotatedHead +: annotatedTail)
+    }
 
   def assertComponents(env: Env, body: Seq[Expr], inArity: Int): Seq[Expr] =
     if (body.isEmpty) {
@@ -207,6 +240,14 @@ object CsppTypeChecker {
       throw new CsppTypeError(pos, msg)
     } else {
       addVars(env + mappings.head, mappings.tail: _*)
+    }
+  }
+
+  def shadowVars(env: Env, mappings: (Ident, Function)*): Env = {
+    if (mappings.isEmpty) {
+      env
+    } else {
+      shadowVars(env + mappings.head, mappings.tail: _*)
     }
   }
 

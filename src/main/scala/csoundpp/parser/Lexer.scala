@@ -24,9 +24,9 @@ class CsppLexer(val source: CsppFile) extends JavaTokenParsers with RegexParsers
     p ^^ { result => result inFile source.path }
   }
 
-  // We can't skip newlines, because they affect how comments are parsed
-  override def skipWhitespace = true
-  override val whiteSpace = """[ \t\r\f]+""".r
+  def word(s: String): Parser[String] = s <~ not("""[a-zA-Z0-9_]""".r)
+
+  override def skipWhitespace = false
 
   val id: Parser[CsppToken] = located {
     """[a-zA-Z][a-zA-Z0-9_]*""".r ^^ { s => IDENT(s) }
@@ -41,23 +41,31 @@ class CsppLexer(val source: CsppFile) extends JavaTokenParsers with RegexParsers
   }
 
   val importStmt: Parser[CsppToken] = located {
-    "import" ^^^ IMPORT()
+    word("import") ^^^ IMPORT()
   }
 
   val instr: Parser[CsppToken] = located {
-    "instr" ^^^ INSTR()
+    word("instr") ^^^ INSTR()
   }
 
   val inserts: Parser[CsppToken] = located {
-    "inserts" ^^^ INSERTS()
+    word("inserts") ^^^ INSERTS()
   }
 
   val sends: Parser[CsppToken] = located {
-    "sends" ^^^ SENDS()
+    word("sends") ^^^ SENDS()
   }
 
   val parallel: Parser[CsppToken] = located {
-    "parallel" ^^^ PARALLEL()
+    word("parallel") ^^^ PARALLEL()
+  }
+
+  val let: Parser[CsppToken] = located {
+    word("let") ^^^ LET()
+  }
+
+  val in: Parser[CsppToken] = located {
+    word("in") ^^^ IN()
   }
 
   val lparen: Parser[CsppToken] = located {
@@ -103,7 +111,7 @@ class CsppLexer(val source: CsppFile) extends JavaTokenParsers with RegexParsers
   val ignore: Parser[Unit] =
     ( """//.*(\n|$)""".r    ^^ { _ => () }
     | """/\*([^\*]|\*[^/])*\*/""".r  ^^ { _ => () }
-    | "\n"              ^^ { _ => () }
+    | whiteSpace ^^ { _ => () }
     )
 
   val tokens: Parser[Seq[CsppToken]] = phrase((ignore *) ~>
@@ -114,6 +122,8 @@ class CsppLexer(val source: CsppFile) extends JavaTokenParsers with RegexParsers
       | inserts
       | sends
       | parallel
+      | let
+      | in
 
       // Then special characters
       | lparen

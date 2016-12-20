@@ -96,21 +96,31 @@ class CsppParser(val disablingContext: CsppParser.DisablingContext = CsppParser.
         case n~v~Some(i)~s => Instrument(n, Chain(Seq(v, i)), s)
         case n~v~None~s    => Instrument(n, v, s)
       }
-    | id ~ (LPAREN() ~> repsep(id, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr)
+    | assignment
+    )
+  }
+
+  def assignment: PackratParser[Assignment] = located {
+    (
+      (id ~ (LPAREN() ~> repsep(id, COMMA()) <~ RPAREN()) ~ (EQUALS() ~> expr))
         ^^ { case n~p~v => Assignment(n, p, v) }
     | (id <~ EQUALS()) ~ expr ^^ { case n~v => Assignment(n, Seq(), v) }
     )
   }
 
   /**
-   * <expr> := parallel { <expr>* }
+   * <expr> := let <assignment> in <expr>
+   *         | let { <assignment>* } in <expr
+   *         | parallel { <expr>* }
    *         | { <expr>* }
    *         | <expr> + <term>
    *         | <expr> - <term>
    *         | <term>
    */
   lazy val expr: PackratParser[Expr] = located {
-    ( PARALLEL() ~> (LBRACE() ~> (expr *) <~ RBRACE()) ^^ { case es => Parallel(es) }
+    ( (LET() ~> assignment <~ IN()) ~ expr ^^ { case a~e => Let(Seq(a), e) }
+    | (LET() ~> LBRACE() ~> rep(assignment) <~ RBRACE() <~ IN()) ~ expr ^^ { case as~e => Let(as, e) }
+    | PARALLEL() ~> (LBRACE() ~> (expr *) <~ RBRACE()) ^^ { case es => Parallel(es) }
     | LBRACE() ~> (expr *) <~ RBRACE() ^^ { case c => Chain(c) }
     | expr ~ PLUS() ~ term ^^ { case e~PLUS()~t => BinOp(e, Plus, t) }
     | expr ~ MINUS() ~ term ^^ { case e~MINUS()~t => BinOp(e, Minus, t) }

@@ -6,7 +6,7 @@ import org.scalatest.Matchers
 
 import absyn._
 import AbsynSugar._
-import CsppDagNodes._
+import CsppDag.Nodes._
 
 class DagSuite extends FunSuite with Matchers {
 

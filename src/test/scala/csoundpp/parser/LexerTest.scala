@@ -69,6 +69,14 @@ class LexerSuite extends FunSuite with Matchers {
     testGoodIdent("foo1")
   }
 
+  test("identifier.keywordPrefix") {
+    testGoodIdent("index")
+  }
+
+  test("identifier.afterKeyword") {
+    "in sine" ~> Seq(IN(), IDENT("sine"))
+  }
+
   test("identifier.invalid.number") {
     testBadIdent("1foo", 3)
   }
@@ -168,6 +176,14 @@ class LexerSuite extends FunSuite with Matchers {
 
   test("tokens.sends") {
     "sends" ~> SENDS()
+  }
+
+  test("tokens.let") {
+    "let" ~> LET()
+  }
+
+  test("tokens.in") {
+    "in" ~> IN()
   }
 
   test("tokens.lparen") {
