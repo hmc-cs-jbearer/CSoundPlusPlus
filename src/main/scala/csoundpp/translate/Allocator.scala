@@ -38,13 +38,8 @@ object CsppLetResolver {
   }
 
   def apply(stmts: Seq[Statement]): Either[CsppCompileError, Seq[Statement]] = {
-    val renamedStmts = stmts collect {
-      case a @ Assignment(name, _, _) => a.copy(name = unletName(name))
-      case i: Instrument => i
-    }
-
     try {
-      Right(resolveStmts(Context.Empty, renamedStmts)._2)
+      Right(resolveStmts(Context.Empty, stmts)._2)
     } catch {
       case e: CsppCompileError => Left(e)
     }
@@ -62,10 +57,7 @@ object CsppLetResolver {
   def resolveStmt(context: Context, stmt: Statement): (Context, Seq[Statement]) = stmt match {
     case a @ Assignment(_, params, body) => {
       val (context2, resolvedBody, emittedStmts) = resolveExpr(context, body)
-      val resolvedAsn = a copy (
-        params = params map (unletName(_)),
-        definition = resolvedBody
-      )
+      val resolvedAsn = a copy (definition = resolvedBody)
       (context2, emittedStmts :+ resolvedAsn)
     }
 
@@ -88,18 +80,16 @@ object CsppLetResolver {
     }
   }
 
-  def resolveExpr(context: Context, expr: Expr, inLet: Boolean = false):
-    (Context, Expr, Seq[Statement]) = expr match {
+  def resolveExpr(context: Context, expr: Expr): (Context, Expr, Seq[Statement]) = expr match {
 
     case Let(bindings, body, ty) => {
       val localNames = bindings map { case Assignment(name, _, _) => name }
       val (context2, globalNames) = letNames(context, localNames)
       val bindingsMap = new HashMap() ++ (localNames zip globalNames)
 
-      def rename(id: Ident) = if (bindingsMap contains id) bindingsMap(id) else unletName(id)
+      def rename(id: Ident) = if (bindingsMap contains id) bindingsMap(id) else id
       val substitutedBody = substitute(rename, body)
-      val (context3, resolvedBody, bodyStatements) =
-        resolveExpr(context2, substitutedBody, inLet = true)
+      val (context3, resolvedBody, bodyStatements) = resolveExpr(context2, substitutedBody)
 
       val renamedBindings = (globalNames zip bindings) map {
         case (name, binding) => binding.copy(name = name)
@@ -113,39 +103,35 @@ object CsppLetResolver {
     case _: Num => (context, expr, Seq())
 
     case b @ BinOp(l, _, r, _) => {
-      val (context2, lResolved, lStatements) = resolveExpr(context, l, inLet)
-      val (context3, rResolved, rStatements) = resolveExpr(context2, r, inLet)
+      val (context2, lResolved, lStatements) = resolveExpr(context, l)
+      val (context3, rResolved, rStatements) = resolveExpr(context2, r)
       (context3, b.copy(left = lResolved, right = rResolved), lStatements ++ rStatements)
     }
 
     case c @ Chain(body, _) => {
-      val (context2, bodyResolved, bodyStatements) = resolveExprs(context, body, inLet)
+      val (context2, bodyResolved, bodyStatements) = resolveExprs(context, body)
       (context2, c.copy(body = bodyResolved), bodyStatements)
     }
 
     case p @ Parallel(body, _) => {
-      val (context2, bodyResolved, bodyStatements) = resolveExprs(context, body, inLet)
+      val (context2, bodyResolved, bodyStatements) = resolveExprs(context, body)
       (context2, p.copy(body = bodyResolved), bodyStatements)
     }
 
     case a @ Application(name, args, _) => {
-      val (context2, argsResolved, argsStatements) = resolveExprs(context, args, inLet)
-      val appResolved = a copy (
-        name = if (inLet) name else unletName(name),
-        args = argsResolved
-      )
+      val (context2, argsResolved, argsStatements) = resolveExprs(context, args)
+      val appResolved = a copy (args = argsResolved)
       (context2, appResolved, argsStatements)
     }
 
   }
 
-  def resolveExprs(context: Context, exprs: Seq[Expr], inLet: Boolean = true):
-    (Context, Seq[Expr], Seq[Statement]) =
+  def resolveExprs(context: Context, exprs: Seq[Expr]): (Context, Seq[Expr], Seq[Statement]) =
     if (exprs.isEmpty) {
       (context, Seq(), Seq())
     } else {
-      val (context2, headResolved, headStatements) = resolveExpr(context, exprs.head, inLet)
-      val (context3, tailResolved, tailStatements) = resolveExprs(context2, exprs.tail, inLet)
+      val (context2, headResolved, headStatements) = resolveExpr(context, exprs.head)
+      val (context3, tailResolved, tailStatements) = resolveExprs(context2, exprs.tail)
       (context3, headResolved +: tailResolved, headStatements ++ tailStatements)
     }
 
@@ -153,12 +139,8 @@ object CsppLetResolver {
 
   def letNames(context: Context, basenames: Seq[Ident]): (Context, Seq[Ident]) = {
     val letNum = context.lets
-    (context copy (lets = letNum + 1), basenames map (id => id.copy(name = s"let$letNum${id.name}")))
+    (context copy (lets = letNum + 1), basenames map (id => id.copy(name = s"_let$letNum${id.name}")))
   }
-
-  // Since we're prefixing let globals with letn, we have to prefix nonlet globals with something
-  // else, so that the user cannot mess things up by naming a variable, eg, let0x
-  def unletName(id: Ident) = id copy (name = s"_${id.name}")
 
   def substitute(rename: Ident => Ident, expr: Expr): Expr = expr match {
     case n: Num => expr

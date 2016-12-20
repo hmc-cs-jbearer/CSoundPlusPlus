@@ -40,8 +40,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       astVar("y", Number)
     ) annotated Number) ~>
     Seq(
-      Assignment("let0y", Seq(), astVar("_x", Number)),
-      Assignment("_foo", Seq(), astVar("let0y", Number))
+      Assignment("_let0y", Seq(), astVar("x", Number)),
+      Assignment("foo", Seq(), astVar("_let0y", Number))
     )
   }
 
@@ -56,9 +56,9 @@ class LetResolverSuite extends FunSuite with Matchers {
       ) annotated Number
     ) ~>
     Seq(
-      Assignment("let0y", Seq(), astVar("_x", Number)),
-      Assignment("let0a", Seq(), astVar("_b", Number)),
-      Assignment("_foo", Seq(), astBinOp(astVar("let0a", Number), Plus, astVar("let0y", Number)))
+      Assignment("_let0y", Seq(), astVar("x", Number)),
+      Assignment("_let0a", Seq(), astVar("b", Number)),
+      Assignment("foo", Seq(), astBinOp(astVar("_let0a", Number), Plus, astVar("_let0y", Number)))
     )
   }
 
@@ -74,10 +74,10 @@ class LetResolverSuite extends FunSuite with Matchers {
       ) annotated Number)
     ) ~>
     Seq(
-      Assignment("let0y", Seq(), astVar("_x", Number)),
-      Assignment("_foo", Seq(), astVar("let0y", Number)),
-      Assignment("let1y", Seq(), astVar("_z", Number)),
-      Assignment("_bar", Seq(), astVar("let1y", Number))
+      Assignment("_let0y", Seq(), astVar("x", Number)),
+      Assignment("foo", Seq(), astVar("_let0y", Number)),
+      Assignment("_let1y", Seq(), astVar("z", Number)),
+      Assignment("bar", Seq(), astVar("_let1y", Number))
     )
   }
 
@@ -92,9 +92,9 @@ class LetResolverSuite extends FunSuite with Matchers {
       )
     ) ~>
     Seq(
-      Assignment("_x", Seq(), astNum(1)),
-      Assignment("let0x", Seq(), astNum(2)),
-      Assignment("_foo", Seq(), astVar("let0x", Number))
+      Assignment("x", Seq(), astNum(1)),
+      Assignment("_let0x", Seq(), astNum(2)),
+      Assignment("foo", Seq(), astVar("_let0x", Number))
     )
   }
 
@@ -104,8 +104,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       astVar("y", Number)
     ) annotated Number) ~>
     Seq(
-      Assignment("let0y", Seq(), astVar("_x", Number)),
-      Assignment("_foo", Seq("_y"), astVar("let0y", Number))
+      Assignment("_let0y", Seq(), astVar("x", Number)),
+      Assignment("foo", Seq("y"), astVar("_let0y", Number))
     )
   }
 
@@ -120,14 +120,15 @@ class LetResolverSuite extends FunSuite with Matchers {
       ) annotated Number
     ) ~>
     Seq(
-      Assignment("let0x", Seq(), astNum(1)),
-      Assignment("let0s", Seq("_x"), astBinOp(astNum(1), Plus, astVar("_x", Number))),
-      Assignment("_foo", Seq(), Application("let0s", Seq(astVar("let0x", Number))) annotated Number)
+      Assignment("_let0x", Seq(), astNum(1)),
+      Assignment("_let0s", Seq("x"), astBinOp(astNum(1), Plus, astVar("x", Number))),
+      Assignment("foo", Seq(), Application("_let0s", Seq(astVar("_let0x", Number))) annotated Number)
     )
   }
 
   test("statement.assignment.number") {
-    Assignment("foo", Seq(), astNum(1)) ~> Assignment("_foo", Seq(), astNum(1))
+    val asn = Assignment("foo", Seq(), astNum(1))
+    asn ~> asn
   }
 
   test("statement.assignment.nested.binOp") {
@@ -141,8 +142,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       )
     ) ~>
     Seq(
-      Assignment("let0s", Seq("_x"), astBinOp(astVar("_x", Number), Plus, astNum(1))),
-      Assignment("_foo", Seq(), astBinOp(astNum(1), Plus, Application("let0s", Seq(astNum(2)))))
+      Assignment("_let0s", Seq("x"), astBinOp(astVar("x", Number), Plus, astNum(1))),
+      Assignment("foo", Seq(), astBinOp(astNum(1), Plus, Application("_let0s", Seq(astNum(2)))))
     )
   }
 
@@ -154,8 +155,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       ) annotated Source
     ))) ~>
     Seq(
-      Assignment("let0localComp", Seq(), astVar("_globalComp", Source)),
-      Assignment("_foo", Seq(), Chain(Seq(astVar("let0localComp", Source))))
+      Assignment("_let0localComp", Seq(), astVar("globalComp", Source)),
+      Assignment("foo", Seq(), Chain(Seq(astVar("_let0localComp", Source))))
     )
   }
 
@@ -167,8 +168,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       ) annotated Source
     ))) ~>
     Seq(
-      Assignment("let0localComp", Seq(), astVar("_globalComp", Source)),
-      Assignment("_foo", Seq(), Parallel(Seq(astVar("let0localComp", Source))))
+      Assignment("_let0localComp", Seq(), astVar("globalComp", Source)),
+      Assignment("foo", Seq(), Parallel(Seq(astVar("_let0localComp", Source))))
     )
   }
 
@@ -184,8 +185,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       ) annotated Source
     ) ~>
     Seq(
-      Assignment("let0y", Seq(), astVar("_x", Number)),
-      Assignment("_foo", Seq(), Application("_bar", Seq(astVar("let0y", Number))) annotated Source)
+      Assignment("_let0y", Seq(), astVar("x", Number)),
+      Assignment("foo", Seq(), Application("bar", Seq(astVar("_let0y", Number))) annotated Source)
     )
   }
 
@@ -204,8 +205,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       astVar("source", Source)
     )~>
     Seq(
-      Assignment("let0x", Seq(), astNum(1)),
-      Instrument(Seq(astVar("let0x", Number)), astVar("_source", Source))
+      Assignment("_let0x", Seq(), astNum(1)),
+      Instrument(Seq(astVar("_let0x", Number)), astVar("source", Source))
     )
   }
 
@@ -218,8 +219,8 @@ class LetResolverSuite extends FunSuite with Matchers {
       ) annotated Source
     ) ~>
     Seq(
-      Assignment("let0s", Seq(), astVar("_source", Source)),
-      Instrument(Seq(astNum(1)), astVar("let0s", Source))
+      Assignment("_let0s", Seq(), astVar("source", Source)),
+      Instrument(Seq(astNum(1)), astVar("_let0s", Source))
     )
   }
 
