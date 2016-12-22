@@ -6,18 +6,23 @@
  * Csound++ features as feasible in a reasonable short example.
  */
 
-index = 10 // The index of modulation for our fm-based source
-
 channel = 12 // One of the channels which will be played by an instrument
 
 /**
  * This is a simple source that just wraps the built-in fm source and provides it with an envelope.
  * It takes two parameters, and it uses the value of the global constant `index`.
  */
-fm_source(freq, amp) = {
-    fm(amp, freq, 2, index)
-    adsr(0.1, 0.01, 0.7, 0.1)
-}
+fm_source(freq, amp) =
+    let index = 10
+    in {
+        let {
+            source = fm(amp, freq, 2, index)
+            effect = adsr(0.1, 0.01, 0.7, 0.1)
+        } in {
+            source
+            effect
+        }
+    }
 
 /**
  * Another simple chain which just wraps a built-in. This one takes one parameter and passes a
