@@ -70,7 +70,7 @@ object CsppTranslator {
 
   // User-defined opcode names are mangled to avoid clashes with CSound built-in opcodes
   def opcodeName(id: Ident) = id match {
-    case Ident(name) => s"cspp_${name}"
+    case Ident(name) => s"_$name"
   }
 
   def localName(id: Ident) = s"i${id.name}"

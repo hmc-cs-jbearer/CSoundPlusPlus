@@ -11,10 +11,9 @@
  */
 #define CSPP_PUBLIC(opcode, dspace, flags, thread, outarg, inargs, isub, ksub, asub) \
     { (opcode), (dspace), (flags), (thread), (outarg), (inargs), (isub), (ksub), (asub) }, \
-    { ("cspp_" opcode), (dspace), (flags), (thread), (outarg), (inargs), (isub), (ksub), (asub) }
+    { ("_" opcode), (dspace), (flags), (thread), (outarg), (inargs), (isub), (ksub), (asub) }
 
 #define CSPP_PRIVATE(opcode, dspace, flags, thread, outarg, inargs, isub, ksub, asub) \
-    { (opcode), (dspace), (flags), (thread), (outarg), (inargs), (isub), (ksub), (asub) }, \
-    { ("__cspp_" opcode), (dspace), (flags), (thread), (outarg), (inargs), (isub), (ksub), (asub) }
+    { (opcode), (dspace), (flags), (thread), (outarg), (inargs), (isub), (ksub), (asub) }
 
 #define S(x) sizeof(x)

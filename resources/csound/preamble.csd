@@ -16,10 +16,9 @@ massign 0, 0
 gipulse ftgen 0, 0, 2048, 10, 1, 1, 1, 1, .7, .5, .3, .1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Built in opcodes. All opcodes with a cspp_ prefix are visible to users via CSound++. For example,
-; a reference to `fm` in CSound++ will compile to a call to the `cspp_fm` opcode.
-; Opcodes prefixed with __cspp_ are not visible to the user, but are used in the implementation of
-; the user-facing opcodes.
+; Built in opcodes. All opcodes with an _ prefix are visible to users via CSound++. For example, a
+; reference to `fm` in CSound++ will compile to a call to the `x_fm` opcode. Opcodes without this
+; prefix are not visible to the user, but are used in the implementation of the user-facing opcodes.
 ;
 ; The following are low-level opcodes, which are visible to the user, but are primarily inteneded to
 ; be used in the implementation of library routines. They give access to CSound-level components.
@@ -32,7 +31,7 @@ gipulse ftgen 0, 0, 2048, 10, 1, 1, 1, 1, .7, .5, .3, .1
 ;   ifreq: the frequency of the signal in Hz.
 ; Outputs:
 ;   asig: a sine wave.
-opcode cspp_sine, a, ii
+opcode _sine, a, ii
 iamp, ifreq xin
 asig oscil iamp, ifreq
 xout asig
@@ -45,7 +44,7 @@ endop
 ;   ifreq: the frequency of the signal in Hz.
 ; Outputs:
 ;   asig: a pulse train.
-opcode cspp_pulse, a, ii
+opcode _pulse, a, ii
 iamp, ifreq xin
 asig oscil iamp, ifreq, gipulse
 xout asig
@@ -60,7 +59,7 @@ endop
 ;   index: the index of modulation.
 ; Outputs:
 ;   asig: the resulting signal.
-opcode cspp_foscil, a, iiii
+opcode _foscil, a, iiii
 iamp, icar, imod, index xin
 asig foscil iamp, 1, icar, imod, index
 xout asig
@@ -80,7 +79,7 @@ endop
 ;   ifreq: the cutoff frequency (modes 0, 1, 5, 6) or center frequency (modes 2 - 4) in Hz.
 ;   ilvl: the amount of boost or cut. Must be > 0. ilvl == 1 results in a flat frequency response.
 ;   iq: the filter quality (ifreq / bandwidth)
-opcode cspp_filt, a, aiiii
+opcode _filt, a, aiiii
 asig, imode, ifreq, ilvl, iq xin
 denorm asig
 
@@ -102,7 +101,7 @@ endop
 ;   iscl: a multiplicative factor by which to scale the frequencies of the given signal. So, for
 ;       example, iscl = 2 would result in transposition up one octave, iscl = 0.5 would result in
 ;       transposition down one octave, etc.
-opcode cspp_transpose, a, ai
+opcode _transpose, a, ai
 asig, iscl xin
 
 fsig  pvsanal   asig, 1024, 256, 1024, 1 ; transform the signal to the frequency domain
@@ -133,7 +132,7 @@ endop
 ;   irel: the release time in seconds.
 ; Outputs:
 ;   asig: the resulting signal.
-opcode cspp_sidechain_compress, a, aaiiiii
+opcode _sidechain_compress, a, aaiiiii
 asig, acmp, iloknee, ihiknee, iratio, iatt, irel xin
 
 ; The lowest level which will be allowed through the compressor. If set above 0, the compressor
@@ -165,7 +164,7 @@ endop
 ;   irel: the release time in seconds.
 ; Outputs:
 ;   asig: the resulting signal.
-opcode cspp_compress, a, aiiiii
+opcode _compress, a, aiiiii
 asig, iloknee, ihiknee, iratio, iatt, irel xin
 asig cspp_sidechain_compress asig, asig, iloknee, ihiknee, iratio, iatt, irel
 xout asig
@@ -180,7 +179,7 @@ endop
 ;   idec: the decay time in seconds.
 ;   isus: the sustain level, on a scale from 0 to 1.
 ;   irel: the release time in second.
-opcode cspp_adsr, a, aiiii
+opcode _adsr, a, aiiii
 asig, iatt, idec, isus, irel xin
 
 kenv madsr iatt, idec, isus, irel
@@ -193,7 +192,7 @@ endop
 ;   asig: the signal to delay
 ;   idlt: the delay time in seconds
 ;   ifb:  the feedback level. Must be in [0, 1)
-opcode cspp_delay, a, aii
+opcode _delay, a, aii
 asig, idlt, ifb xin
 adel init 0
 adel delay asig + (adel*ifb), idlt
@@ -204,7 +203,7 @@ endop
 ;   Reverberates an input signal with a “natural room” frequency response.
 ; Inputs:
 ;   irvt:
-opcode cspp_reverb, a, ai
+opcode _reverb, a, ai
 asig, irvt xin
 asig reverb asig, irvt
 xout asig
@@ -214,14 +213,14 @@ endop
 ;   Scale the input signal by the given factor.
 ; Inputs:
 ;   ilvl: the multiplicative factor by which to scale.
-opcode cspp_scale, a, ai
+opcode _scale, a, ai
 asig, ilvl xin
 xout asig * ilvl
 endop
 
 ; lopass_sweep
 ;   Temporarily in place for a demo, will be removed when control rate functions are added.
-opcode cspp_lopass_sweep, a, aiiiiii
+opcode _lopass_sweep, a, aiiiiii
 ain, ia, iadur, ib, irel, iz, iq xin
 k1 expsegr ia, iadur, ib, irel, iz
 ksweep = k1 - ia
@@ -234,7 +233,7 @@ endop
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; sqrt: compute the square root of a nonnegative number
-opcode cspp_sqrt, i, i
+opcode _sqrt, i, i
 input xin
 xout sqrt(input)
 endop
