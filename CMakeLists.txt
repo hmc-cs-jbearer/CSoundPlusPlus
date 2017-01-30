@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(CSound++)
+project(SoundWave)
 include(ExternalProject)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
@@ -23,8 +23,8 @@ ExternalProject_Add(csound
 include_directories(tpc/csound/src/csound/include)
 include_directories(tpc/csound/src/csound/nacl)
 
-# Builds a shared library containing extensions to the CSound language required to run CSound++
-add_subdirectory(src/main/c/csoundpp)
+# Builds a shared library containing extensions to the CSound language required to run SoundWave
+add_subdirectory(src/main/c/soundwave)
 
 # sbt setup
 if ("$ENV{SCALA_VERSION}")
@@ -36,22 +36,24 @@ endif()
 
 file(GLOB_RECURSE SCALA_SRC src/main/scala/*.scala)
 
-# Build a fat jar with the cspp language
+# Build a fat jar with the SoundWave language
 add_custom_command(
-  OUTPUT bin/cspp.jar
+  OUTPUT bin/soundwave.jar
   COMMAND sbt "${SBT_SCALA_VERSION}" assembly
-  COMMAND cmake -E touch bin/cspp.jar # It's possible that sbt determined that the jar was already
-                                      # up to date. Touch it to tell cmake the dependency is satisfied
+  # It's possible that sbt determined that the jar was already
+  # up to date. Touch it to tell cmake the dependency is satisfied
+  COMMAND cmake -E touch bin/soundwave.jar
   DEPENDS ${SCALA_SRC} build.sbt project/plugins.sbt
-  COMMENT "Building cspp.jar"
+  COMMENT "Building soundwave.jar"
 )
-add_custom_target(jar ALL DEPENDS bin/cspp.jar)
+add_custom_target(jar ALL DEPENDS bin/soundwave.jar)
 
 # Test runners
 add_custom_target(unit-test sbt ${SBT_SCALA_VERSION} test COMMENT "Running unit tests")
 add_custom_target(unit-test-coverage sbt ${SBT_SCALA_VERSION} coverage test
   COMMENT "Running unit tests with coverage reporting")
-add_custom_target(integration-test python3 -m nose -vv src/test/python/csoundpp DEPENDS jar csppstd
+add_custom_target(integration-test python3 -m nose -vv src/test/python/soundwave
+  DEPENDS jar soundwave-std
   COMMENT "Running integration tests")
 add_custom_target(test-all DEPENDS unit-test integration-test)
 add_custom_target(test-all-coverage DEPENDS unit-test-coverage integration-test)

@@ -3,13 +3,13 @@
 import argparse
 import sys
 
-from csoundpp.errors import SubprocessError
-from csoundpp.player import play
+from soundwave.errors import SubprocessError
+from soundwave.player import play
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="Perform a MIDI score using a CSound++ program.")
-    parser.add_argument("orcFile", metavar="<orc>", help="the CSound++ orchestra file to play")
+    parser = argparse.ArgumentParser(description="Perform a MIDI score using a SoundWave program.")
+    parser.add_argument("orcFile", metavar="<orc>", help="the SoundWave orchestra file to play")
     parser.add_argument("scoreFile", metavar="<score>", help="the MIDI score to perform")
     parser.add_argument("-o", "--out", dest="outFile", default="dac",
         metavar="<file>", help="place the output into <file> in WAV format")

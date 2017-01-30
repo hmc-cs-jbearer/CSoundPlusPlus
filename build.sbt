@@ -1,4 +1,4 @@
-name := "CSound++"
+name := "SoundWave"
 
 version := "0.0.1"
 
@@ -21,7 +21,7 @@ libraryDependencies ++= Seq(
 
 unmanagedClasspath in (Compile, runMain) += baseDirectory.value / "resources"
 
-assemblyOutputPath in assembly := baseDirectory.value / "bin" / "cspp.jar"
+assemblyOutputPath in assembly := baseDirectory.value / "bin" / "soundwave.jar"
 
 // Do not unit test when building jar
 test in assembly := {}
@@ -36,5 +36,5 @@ lazy val root = (project in file(".")).
         sbtVersion,
         BuildInfoKey.map(baseDirectory) { case (k, v) => k -> v.toString }
     ),
-    buildInfoPackage := "cspp"
+    buildInfoPackage := "soundwave"
   )

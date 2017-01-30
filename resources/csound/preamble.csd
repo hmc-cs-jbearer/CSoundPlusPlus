@@ -1,6 +1,6 @@
 #! /usr/bin/env csound-play
-; This file is prepended to every compiled CSound++ program. It contains global setup code as well
-; as CSound opcodes defining the built-in CSound++ features.
+; This file is prepended to every compiled SoundWave program. It contains global setup code as well
+; as CSound opcodes defining the built-in SoundWave features.
 
 sr = 44100  ; Sampling rate
 ksmps = 32  ; Control rate (sr / 32)
@@ -16,8 +16,8 @@ massign 0, 0
 gipulse ftgen 0, 0, 2048, 10, 1, 1, 1, 1, .7, .5, .3, .1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Built in opcodes. All opcodes with an _ prefix are visible to users via CSound++. For example, a
-; reference to `fm` in CSound++ will compile to a call to the `x_fm` opcode. Opcodes without this
+; Built in opcodes. All opcodes with an _ prefix are visible to users via SoundWave. For example, a
+; reference to `fm` in SoundWave will compile to a call to the `x_fm` opcode. Opcodes without this
 ; prefix are not visible to the user, but are used in the implementation of the user-facing opcodes.
 ;
 ; The following are low-level opcodes, which are visible to the user, but are primarily inteneded to
@@ -66,7 +66,7 @@ xout asig
 endop
 
 ; filt:
-;   The common implementation for all CSound++ filter types.
+;   The common implementation for all SoundWave filter types.
 ; Inputs:
 ;   imode: an integer representing the type of filtering to perform.
 ;       0: Resonant low-pass filter
@@ -166,7 +166,7 @@ endop
 ;   asig: the resulting signal.
 opcode _compress, a, aiiiii
 asig, iloknee, ihiknee, iratio, iatt, irel xin
-asig cspp_sidechain_compress asig, asig, iloknee, ihiknee, iratio, iatt, irel
+asig _sidechain_compress asig, asig, iloknee, ihiknee, iratio, iatt, irel
 xout asig
 endop
 
