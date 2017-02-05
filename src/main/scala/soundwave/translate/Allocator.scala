@@ -335,6 +335,7 @@ object SwDag {
 
     case class CompNode(inputs: Seq[String], outputs: Seq[String], comp: Expr) extends ExprNode {
       val ty: Option[SwType] = None
+      def unannotatedString = comp.unannotatedString
       def annotated(newTy: SwType) = {
         throw new SwTranslateError(this.loc, "CompNode cannot be annotated.")
       }
