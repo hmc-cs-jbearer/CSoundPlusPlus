@@ -10,34 +10,30 @@ import tokens._
 
 class TypecheckSuite extends FunSuite with Matchers {
 
-  type Env = SwTypeChecker.Env
+  type PrimitiveMap = SwTypeChecker.TypeMap
 
-  // Syntactic sugar for function types
-  implicit class ZeroAry(resultTy: SwType) extends Function(resultTy, 0)
-  implicit class PolyAry(input: (SwType, Int)) extends Function(input._1, input._2)
-
-  def env(mappings: (String, Function)*): Env =
-    if (mappings.isEmpty) {
-      new Env()
-    } else {
-      env(mappings.tail:_*) + (Ident(mappings.head._1) -> mappings.head._2)
-    }
+  def builtin(mappings: ((String, Int), SwType)*): PrimitiveMap =
+    new PrimitiveMap() ++ (mappings collect {
+      case ((name, arity), ty) => ((Ident(name), arity), ty)
+    })
 
   // Syntactic sugar for 0-argument functions (ie variables)
   def Var(id: Ident) = Application(id, Seq())
   def Assign(id: Ident, body: Expr) = Assignment(id, Seq(), body)
 
-  def tryGoodElement[T](env: Env, input: T, expected: T, annotator: (Env, T) => T) = {
+  def tryGoodElement[T](
+    builtins: PrimitiveMap, input: T, expected: T, annotator: (PrimitiveMap, T) => T) = {
     try {
-      annotator(env, input) should equal (expected)
+      annotator(builtins, input) should equal (expected)
     } catch {
       case e: SwCompileError => fail(e.toString + "\n" + e.getStackTrace.mkString("\n"))
     }
   }
 
-  def tryBadElement[T](env: Env, input: T, expected: TypeError, annotator: (Env, T) => T) = {
+  def tryBadElement[T](
+    builtins: PrimitiveMap, input: T, expected: TypeError, annotator: (PrimitiveMap, T) => T) = {
     try {
-      fail(annotator(env, input).toString ++ " was successful.")
+      fail(annotator(builtins, input).toString ++ " was successful.")
     } catch {
       case SwCompileError(loc, _) => {
         loc.line should equal (expected.line)
@@ -46,36 +42,56 @@ class TypecheckSuite extends FunSuite with Matchers {
     }
   }
 
-  def tryBadElement[T](env: Env, input: T, annotator: (Env, T) => T) = {
+  def tryBadElement[T](builtins: PrimitiveMap, input: T, annotator: (PrimitiveMap, T) => T) = {
     try {
-      fail(annotator(env, input).toString ++ " was successful.")
+      fail(annotator(builtins, input).toString ++ " was successful.")
     } catch {
       case SwCompileError(loc, _) => ()
     }
   }
 
-  def testGoodInput(env: Env, input: Seq[Statement], expected: Seq[Statement]) = {
-    SwTypeChecker(env, input) match {
+  def testGoodInput(builtins: PrimitiveMap, input: Seq[Statement], expected: Seq[Statement]) = {
+    SwTypeChecker(builtins, input) match {
       case Right(output) => {
-        output should equal (expected)      }
-      case Left(err) => fail(input.toString ++ " failed to typecheck: " ++ err.toString)
+        // The exact order is undefined, so we compare them as sets. To check a partial ordering,
+        // use `ordered(("id1", arity) before ("id2", arity))`
+        output.toSet should equal (expected.toSet)
+
+        // We can check that the assignments all come before the instruments
+        var seenInstr = false
+        for (stmt <- output) {
+          if (seenInstr && stmt.isInstanceOf[Assignment]) {
+            fail(s"Found assignment after instrument in $output")
+          }
+          if (!seenInstr && stmt.isInstanceOf[Instrument]) {
+            seenInstr = true
+          }
+        }
+
+        output
+      }
+      case Left(err) => {
+        fail(input.toString ++ " failed to typecheck: " ++ err.toString)
+        Seq()
+      }
     }
   }
 
-  def testBadInput(env: Env, input: Seq[Statement], loc: Location) =
-  SwTypeChecker(env, input) match {
+  def testBadInput(builtins: PrimitiveMap, input: Seq[Statement], loc: Location) =
+  SwTypeChecker(builtins, input) match {
     case Right(output)                          => fail(output.toString ++ " was successful.")
     case Left(SwCompileError(reportedLoc, _)) => reportedLoc should equal (loc)
   }
 
-  def testBadInput(env: Env, input: Seq[Statement]) = SwTypeChecker(env, input) match {
-    case Right(output)  => fail(output.toString ++ " was successful.")
-    case Left(_)        => ()
-  }
+  def testBadInput(builtins: PrimitiveMap, input: Seq[Statement]) =
+    SwTypeChecker(builtins, input) match {
+      case Right(output)  => fail(output.toString ++ " was successful.")
+      case Left(_)        => ()
+    }
 
   // Test a whole program starting from a string, and going through the lexing, parsing, and
   // typecheck phases. This is used to test the locations reported with type errors
-  class SystemTester(env: Env, input: String) {
+  class SystemTester(builtins: PrimitiveMap, input: String) {
     def lexAndThen[T](continue: Seq[SwToken] => T)(input: String) = {
       SwLexer(input) match {
         case Right(output)                            => continue(output)
@@ -97,42 +113,76 @@ class TypecheckSuite extends FunSuite with Matchers {
     def ~>(output: Seq[Statement]) =
       lexAndThen {
         parseAndThen { (ast: Seq[Statement]) =>
-          env ~> ast ~> output
+          builtins ~> ast ~> output
         }
       } (input)
 
     def ~>(error: TypeError) =
       lexAndThen {
         parseAndThen { (ast: Seq[Statement]) =>
-          env ~> ast ~> error
+          builtins ~> ast ~> error
         }
       } (input)
   }
 
-  class ProgramTester(val env: Env, val input: Seq[Statement]) {
-    def ~>(output: Seq[Statement]) = testGoodInput(env, input, output)
-    def ~>(error: TypeError) = testBadInput(env, input, error)
-    def ~/>(output: ExpectFailure) = testBadInput(env, input)
+  class ProgramTester(val builtins: PrimitiveMap, val input: Seq[Statement]) {
+    def ~>(output: Seq[Statement]) = new OrderingAssertible(testGoodInput(builtins, input, output))
+    def ~>(error: TypeError) = testBadInput(builtins, input, error)
+    def ~/>(output: ExpectFailure) = testBadInput(builtins, input)
   }
 
-  class ElemTester[T](val env: Env, val input: T, val annotator: (Env, T) => T) {
-    def ~>(output: T) = tryGoodElement(env, input, output, annotator)
-    def ~>(error: TypeError) = tryBadElement(env, input, error, annotator)
-    def ~/>(output: ExpectFailure) = tryBadElement(env, input, annotator)
+  class OrderingAssertible(val stmts: Seq[Statement]) {
+    def ordered(orderings: ((Ident, Int), (Ident, Int))*) =
+      for ((first, second) <- orderings) {
+        val firstIndex = stmts.indexWhere(_ match {
+          case Assignment(id, params, _) => (id, params.length) == first
+          case _                         => false
+        })
+        val secondIndex = stmts.indexWhere(_ match {
+          case Assignment(id, params, _) => (id, params.length) == second
+          case _                         => false
+        })
+        if (firstIndex == -1) {
+          fail(s"Check your test case: $first did not occur at all in $stmts.")
+        }
+        if (secondIndex == -1) {
+          fail(s"Check your test case: $second did not occur at all in $stmts.")
+        }
+        if (firstIndex >= secondIndex) {
+          fail(s"$first did not occur before $second in $stmts")
+        }
+      }
   }
 
-  class StmtTester(env: Env, input: Statement)
-    extends ElemTester(env, input, (
-      (env: Env, stmt: Statement) => SwTypeChecker.annotateStmt(env, stmt)._2))
+  implicit class OrderingAssertion(first: (String, Int)) {
+    def before(second: (String, Int)) = ((Ident(first._1), first._2), (Ident(second._1), second._2))
+  }
 
-  class ExprTester(env: Env, input: Expr)
-    extends ElemTester(env, input, SwTypeChecker.annotateExpr)
+  class StmtTester(builtins: PrimitiveMap, input: Statement) {
+    def ~>(output: Statement) = builtins ~> Seq(input) ~> Seq(output)
+    def ~>(error: TypeError) = builtins ~> Seq(input) ~> error
+    def ~/>(output: ExpectFailure) = builtins ~> Seq(input) ~/> output
+  }
 
-  implicit class TypecheckTestBuilder(env: Env) {
-    def ~>(input: Seq[Statement]) = new ProgramTester(env, input)
-    def ~>(input: Statement) = new StmtTester(env, input)
-    def ~>(input: Expr) = new ExprTester(env, input)
-    def ~>(input: String) = new SystemTester(env, input)
+  class ExprTester(builtins: PrimitiveMap, input: Expr) {
+    def ~>(output: Expr) = builtins ~>
+      // Wrap the expression in a bogus assignment
+      Assignment("_unique_name", Seq(), input) ~> Assignment("_unique_name", Seq(), output)
+
+    def ~>(error: TypeError) = builtins ~>
+      // Wrap the expression in a bogus assignment
+      Assignment("_unique_name", Seq(), input) ~> error
+
+    def ~/>(output: ExpectFailure) = builtins ~>
+      // Wrap the expression in a bogus assignment
+      Assignment("_unique_name", Seq(), input) ~/> output
+  }
+
+  implicit class TypecheckTestBuilder(builtins: PrimitiveMap) {
+    def ~>(input: Seq[Statement]) = new ProgramTester(builtins, input)
+    def ~>(input: Statement) = new StmtTester(builtins, input)
+    def ~>(input: Expr) = new ExprTester(builtins, input)
+    def ~>(input: String) = new SystemTester(builtins, input)
   }
 
   // Overload selectors for tests that expect the type check to fail
@@ -140,6 +190,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   object ident extends ExpectFailure
   object expr extends ExpectFailure
   object statement extends ExpectFailure
+  object program extends ExpectFailure
 
   // Object used to state expectation for tests that should fail the typecheck phase
   class TypeError(line: Int, column: Int) extends Location(line, column, "")
@@ -150,55 +201,55 @@ class TypecheckSuite extends FunSuite with Matchers {
 
   test("expression.num") {
     val expr = Num(42)
-    env() ~> expr ~> (expr annotated Number)
+    builtin() ~> expr ~> (expr annotated Number)
   }
 
   test("expression.var.num") {
     val expr = Var(Ident("foo"))
-    env("foo" -> Number) ~> expr ~> (expr annotated Number)
+    builtin(("foo", 0) -> Number) ~> expr ~> (expr annotated Number)
   }
 
   test("expression.var.source") {
     val expr = Var(Ident("foo"))
-    env("foo" -> Source) ~> expr ~> (expr annotated Source)
+    builtin(("foo", 0) -> Source) ~> expr ~> (expr annotated Source)
   }
 
   test("expression.var.effect") {
     val expr = Var(Ident("foo"))
-    env("foo" -> Effect) ~> expr ~> (expr annotated Effect)
+    builtin(("foo", 0) -> Effect) ~> expr ~> (expr annotated Effect)
   }
 
   test("expression.var.invalid.unknown") {
-    env() ~> Var(Ident("foo")) ~/> expr
+    builtin() ~> Var(Ident("foo")) ~/> expr
   }
 
   test("expression.function.number") {
     val expr = Application(Ident("foo"), Seq(Num(42)))
     val annotated = Application(Ident("foo"), Seq(Num(42) annotated Number)) annotated Number
-    env("foo" -> (Number, 1)) ~> expr ~> annotated
+    builtin(("foo", 1) -> Number) ~> expr ~> annotated
   }
 
   test("expression.function.invalid.nonnumericArgs") {
-    env("foo" -> (Number, 1), "source" -> Source) ~>
+    builtin(("foo", 1) -> Number, ("source", 0) -> Source) ~>
       Application(Ident("foo"), Seq(Var("source"))) ~/> expr
   }
 
   test("expression.chain.empty") {
-    env() ~> Chain(Seq()) ~> (Chain(Seq()) annotated Effect)
+    builtin() ~> Chain(Seq()) ~> (Chain(Seq()) annotated Effect)
   }
 
   test("expression.chain.sourceOnly") {
     val comp = Application(Ident("source"), Seq())
     val expr = Chain(Seq(comp))
     val annotated = Chain(Seq(comp annotated Source)) annotated Source
-    env("source" -> Source) ~> expr ~> annotated
+    builtin(("source", 0) -> Source) ~> expr ~> annotated
   }
 
   test("expression.chain.effectOnly") {
     val comp = Application(Ident("effect"), Seq())
     val expr = Chain(Seq(comp))
     val annotated = Chain(Seq(comp annotated Effect)) annotated Effect
-    env("effect" -> Effect) ~> expr ~> annotated
+    builtin(("effect", 0) -> Effect) ~> expr ~> annotated
   }
 
   test("expression.chain.sourceAndEffect") {
@@ -206,43 +257,43 @@ class TypecheckSuite extends FunSuite with Matchers {
     val effect = Application(Ident("effect"), Seq())
     val expr = Chain(Seq(source, effect))
     val annotated = Chain(Seq(source annotated Source, effect annotated Effect)) annotated Source
-    env("source" -> Source, "effect" -> Effect) ~> expr ~> annotated
+    builtin(("source", 0) -> Source, ("effect", 0) -> Effect) ~> expr ~> annotated
   }
 
   test("expression.chain.invalid.twoSource") {
     val source1 = Application(Ident("source1"), Seq())
     val source2 = Application(Ident("source2"), Seq())
     val input = Chain(Seq(source1, source2))
-    env("source1" -> Source, "source2" -> Source) ~> input ~/> expr
+    builtin(("source1", 0) -> Source, ("source2", 0) -> Source) ~> input ~/> expr
   }
 
   test("expression.chain.invalid.effectAndSource") {
     val source = Application(Ident("source"), Seq())
     val effect = Application(Ident("effect"), Seq())
     val input = Chain(Seq(effect, source))
-    env("source" -> Source, "effect" -> Effect) ~> input ~/> expr
+    builtin(("source", 0) -> Source, ("effect", 0) -> Effect) ~> input ~/> expr
   }
 
   test("expression.chain.invalid.number") {
-    env("var" -> Number) ~> Chain(Seq(Var(Ident("var")))) ~/> expr
+    builtin(("var", 0) -> Number) ~> Chain(Seq(Var(Ident("var")))) ~/> expr
   }
 
   test("expression.parallel.empty") {
-    env() ~> Parallel(Seq()) ~> (Parallel(Seq()) annotated Effect)
+    builtin() ~> Parallel(Seq()) ~> (Parallel(Seq()) annotated Effect)
   }
 
   test("expression.parallel.sourceOnly") {
     val comp = Application(Ident("source"), Seq())
     val expr = Parallel(Seq(comp))
     val annotated = Parallel(Seq(comp annotated Source)) annotated Source
-    env("source" -> Source) ~> expr ~> annotated
+    builtin(("source", 0) -> Source) ~> expr ~> annotated
   }
 
   test("expression.parallel.effectOnly") {
     val comp = Application(Ident("effect"), Seq())
     val expr = Parallel(Seq(comp))
     val annotated = Parallel(Seq(comp annotated Effect)) annotated Effect
-    env("effect" -> Effect) ~> expr ~> annotated
+    builtin(("effect", 0) -> Effect) ~> expr ~> annotated
   }
 
   test("expression.parallel.sourceAndEffect") {
@@ -251,7 +302,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val expr = Parallel(Seq(source, effect))
     val annotated =
       Parallel(Seq(source annotated Source, effect annotated Effect)) annotated Component(1, 2)
-    env("source" -> Source, "effect" -> Effect) ~> expr ~> annotated
+    builtin(("source", 0) -> Source, ("effect", 0) -> Effect) ~> expr ~> annotated
   }
 
   test("expression.parallel.twoSource") {
@@ -260,7 +311,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val input = Parallel(Seq(source1, source2))
     val annotated =
       Parallel(Seq(source1 annotated Source, source2 annotated Source)) annotated Component(0, 2)
-    env("source1" -> Source, "source2" -> Source) ~> input ~> annotated
+    builtin(("source1", 0) -> Source, ("source2", 0) -> Source) ~> input ~> annotated
   }
 
   test("expression.parallel.effectAndSource") {
@@ -269,7 +320,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val input = Parallel(Seq(effect, source))
     val annotated =
       Parallel(Seq(effect annotated Effect, source annotated Source)) annotated Component(1, 2)
-    env("source" -> Source, "effect" -> Effect) ~> input ~> annotated
+    builtin(("source", 0) -> Source, ("effect", 0) -> Effect) ~> input ~> annotated
   }
 
   test("expression.parallel.twoEffect") {
@@ -278,7 +329,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val input = Parallel(Seq(effect1, effect2))
     val annotated =
       Parallel(Seq(effect1 annotated Effect, effect2 annotated Effect)) annotated Component(2, 2)
-    env("effect1" -> Effect, "effect2" -> Effect) ~> input ~> annotated
+    builtin(("effect1", 0) -> Effect, ("effect2", 0) -> Effect) ~> input ~> annotated
   }
 
   test("expression.parallel.effectsAndSources") {
@@ -294,14 +345,14 @@ class TypecheckSuite extends FunSuite with Matchers {
         effect1 annotated Effect,
         effect2 annotated Effect)
       ) annotated Component(2, 4)
-    env("source1" -> Source,
-        "source2" -> Source,
-        "effect1" -> Effect,
-        "effect2" -> Effect) ~> input ~> annotated
+    builtin(("source1", 0) -> Source,
+            ("source2", 0) -> Source,
+            ("effect1", 0) -> Effect,
+            ("effect2", 0) -> Effect) ~> input ~> annotated
   }
 
   test("expression.parallel.invalid.number") {
-    env("var" -> Number) ~> Parallel(Seq(Var(Ident("var")))) ~/> expr
+    builtin(("var", 0) -> Number) ~> Parallel(Seq(Var(Ident("var")))) ~/> expr
   }
 
   test("expression.binop.numbers") {
@@ -309,7 +360,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val rhs = Num(1)
     val expr = BinOp(lhs, Plus, rhs)
     val annotated = BinOp(lhs annotated Number, Plus, rhs annotated Number) annotated Number
-    env() ~> expr ~> annotated
+    builtin() ~> expr ~> annotated
   }
 
   test("expression.binop.functions") {
@@ -317,11 +368,11 @@ class TypecheckSuite extends FunSuite with Matchers {
     val rhs = Var(Ident("bar"))
     val expr = BinOp(lhs, Plus, rhs)
     val annotated = BinOp(lhs annotated Number, Plus, rhs annotated Number) annotated Number
-    env("foo" -> Number, "bar" -> Number) ~> expr ~> annotated
+    builtin(("foo", 0) -> Number, ("bar", 0) -> Number) ~> expr ~> annotated
   }
 
   test("expression.binop.invalid.source") {
-    env("source" -> Source) ~> BinOp(Num(42), Plus, Var("source")) ~/> expr
+    builtin(("source", 0) -> Source) ~> BinOp(Num(42), Plus, Var("source")) ~/> expr
   }
 
   test("expression.let.newBinding") {
@@ -332,7 +383,7 @@ class TypecheckSuite extends FunSuite with Matchers {
       Seq(Assignment("x", Seq(), Num(5) annotated Number)),
       expr annotated Number
     ) annotated Number
-    env() ~> let ~> annotatedLet
+    builtin() ~> let ~> annotatedLet
   }
 
   test("expression.let.shadow") {
@@ -343,7 +394,7 @@ class TypecheckSuite extends FunSuite with Matchers {
       Seq(Assignment("x", Seq(), Num(5) annotated Number)),
       expr annotated Number
     ) annotated Number
-    env("x" -> Source) ~> let ~> annotatedLet
+    builtin(("x", 0) -> Source) ~> let ~> annotatedLet
   }
 
   test("expression.let.immediatelyInScope") {
@@ -357,7 +408,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val let = Let(Seq(binding1, binding2), expr)
     val annotatedLet =
       Let(Seq(annotatedBinding1, annotatedBinding2), expr annotated Number) annotated Number
-    env() ~> let ~> annotatedLet
+    builtin() ~> let ~> annotatedLet
   }
 
   test("expression.let.function") {
@@ -368,22 +419,22 @@ class TypecheckSuite extends FunSuite with Matchers {
     val annotatedExpr = Application("s", Seq(Num(5) annotated Number)) annotated Number
     val let = Let(Seq(binding), expr)
     val annotatedLet = Let(Seq(annotatedBinding), annotatedExpr) annotated Number
-    env() ~> let ~> annotatedLet
+    builtin() ~> let ~> annotatedLet
   }
 
   test("expression.let.invalid.redefiniton") {
-    env() ~> Let(Seq(
+    builtin() ~> Let(Seq(
       Assignment("x", Seq(), Num(5)),
       Assignment("x", Seq(), Num(6))
     ), Var("x")) ~/> expr
   }
 
   test("expression.let.invalid.unknown.inBinding") {
-    env() ~> Let(Seq(Assignment("x", Seq(), Var("y"))), Var("x")) ~/> expr
+    builtin() ~> Let(Seq(Assignment("x", Seq(), Var("y"))), Var("x")) ~/> expr
   }
 
   test("expression.let.invalid.unknown.inBody") {
-    env() ~> Let(Seq(Assignment("x", Seq(), Num(5))), Var("y")) ~/> expr
+    builtin() ~> Let(Seq(Assignment("x", Seq(), Num(5))), Var("y")) ~/> expr
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -394,14 +445,14 @@ class TypecheckSuite extends FunSuite with Matchers {
     val expr = Num(42)
     val stmt = Assign(Ident("foo"), expr)
     val annotated = Assign(Ident("foo"), expr annotated Number)
-    env() ~> stmt ~> annotated
+    builtin() ~> stmt ~> annotated
   }
 
   test("statement.assignment.var") {
     val expr = Var(Ident("bar"))
     val stmt = Assign(Ident("foo"), expr)
     val annotated = Assign(Ident("foo"), expr annotated Number)
-    env("bar" -> Number) ~> stmt ~> annotated
+    builtin(("bar", 0) -> Number) ~> stmt ~> annotated
   }
 
   test("statement.assignment.chain") {
@@ -409,7 +460,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val expr = Chain(Seq(comp))
     val stmt = Assign(Ident("foo"), expr)
     val annotated = Assign(Ident("foo"), Chain(Seq(comp annotated Source)) annotated Source)
-    env("source" -> Source) ~> stmt ~> annotated
+    builtin(("source", 0) -> Source) ~> stmt ~> annotated
   }
 
   test("statement.assignment.parallel") {
@@ -419,7 +470,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val stmt = Assign(Ident("foo"), expr)
     val annotated = Assign(Ident("foo"), Parallel(Seq(
       source1 annotated Source, source2 annotated Source)) annotated Component(0, 2))
-    env("source1" -> Source, "source2" -> Source) ~> stmt ~> annotated
+    builtin(("source1", 0) -> Source, ("source2", 0) -> Source) ~> stmt ~> annotated
   }
 
   test("statement.assignment.chainWithParams") {
@@ -433,7 +484,7 @@ class TypecheckSuite extends FunSuite with Matchers {
           Seq(Var(Ident("param")) annotated Number)
         ) annotated Source
       )) annotated Source)
-    env("source" -> (Source, 1)) ~> stmt ~> annotated
+    builtin(("source", 1) -> Source) ~> stmt ~> annotated
   }
 
   test("statement.assignment.env") {
@@ -446,7 +497,229 @@ class TypecheckSuite extends FunSuite with Matchers {
       Assign(Ident("foo"), expr annotated Number),
       Assign(Ident("bar"), Var(Ident("foo")) annotated Number)
     )
-    env() ~> stmts ~> annotated
+    builtin() ~> stmts ~> annotated
+  }
+
+  test("statement.assignment.overload.builtin") {
+    builtin(("foo", 0) -> Source) ~> Assignment("foo", Seq("param"), Num(1)) ~>
+      Assignment("foo", Seq("param"), Num(1) annotated Number)
+  }
+
+  test("statement.assignment.overload.builtin.bothVisible") {
+    builtin(("foo", 0) -> Source) ~>
+    Seq(
+      Assignment("foo", Seq("param"), Var("param")),
+      Assignment("bar1", Seq(), Var("foo")),
+      Assignment("bar2", Seq(), Application("foo", Seq(Num(1))))
+    ) ~> Seq(
+      Assignment("foo", Seq("param"), Var("param") annotated Number),
+      Assignment("bar1", Seq(), Var("foo") annotated Source),
+      Assignment("bar2", Seq(), Application("foo", Seq(Num(1) annotated Number)) annotated Number)
+    ) ordered (
+      ("foo", 1) before ("bar2", 0)
+    )
+  }
+
+  test("statement.assignment.overload.userDefined") {
+    builtin() ~> Seq(
+      Assignment("foo", Seq(), Num(1)),
+      Assignment("foo", Seq("param"), Var("param"))
+    ) ~> Seq(
+      Assignment("foo", Seq(), Num(1) annotated Number),
+      Assignment("foo", Seq("param"), Var("param") annotated Number)
+    )
+  }
+
+  test("statement.assignment.overload.userDefined.bothVisible") {
+    builtin() ~> Seq(
+      Assignment("foo", Seq(), Num(1)),
+      Assignment("foo", Seq("param"), Var("param")),
+      Assignment("bar1", Seq(), Var("foo")),
+      Assignment("bar2", Seq(), Application("foo", Seq(Num(1))))
+    ) ~> Seq(
+      Assignment("foo", Seq(), Num(1) annotated Number),
+      Assignment("foo", Seq("param"), Var("param") annotated Number),
+      Assignment("bar1", Seq(), Var("foo") annotated Number),
+      Assignment("bar2", Seq(), Application("foo", Seq(Num(1) annotated Number)) annotated Number)
+    ) ordered (
+      ("foo", 0) before ("bar1", 0),
+      ("foo", 1) before ("bar2", 0)
+    )
+  }
+
+  test("statement.assignment.reordering.two") {
+    builtin() ~> Seq(
+      Assignment("foo", Seq(), Var("bar")),
+      Assignment("bar", Seq(), Num(1))
+    ) ~> Seq(
+      Assignment("bar", Seq(), Num(1) annotated Number),
+      Assignment("foo", Seq(), Var("bar") annotated Number)
+    ) ordered (
+      ("bar", 0) before ("foo", 0)
+    )
+  }
+
+  test("statement.assignment.reordering.nested.param") {
+    builtin(("s", 1) -> Number) ~>
+    Seq(
+      Assignment("three", Seq(), Application("s", Seq(Var("two")))),
+      Assignment("two", Seq(), Num(2))
+    ) ~>
+    Seq(
+      Assignment("two", Seq(), Num(2) annotated Number),
+      Assignment("three", Seq(), Application("s", Seq(Var("two") annotated Number)) annotated Number)
+    ) ordered (
+      ("two", 0) before ("three", 0)
+    )
+  }
+
+  test("statement.assignment.reordering.nested.binOp") {
+    builtin() ~> Seq(
+      Assignment("a", Seq(), BinOp(Num(2), Plus, Var("b"))),
+      Assignment("b", Seq(), Num(1))
+    ) ~> Seq(
+      Assignment("b", Seq(), Num(1) annotated Number),
+      Assignment("a", Seq(), BinOp(
+        Num(2) annotated Number,
+        Plus,
+        Var("b") annotated Number) annotated Number)
+    ) ordered (
+      ("b", 0) before ("a", 0)
+    )
+  }
+
+  test("statement.assignment.reordering.nested.chain") {
+    builtin(("source", 0) -> Source) ~> Seq(
+      Assignment("a", Seq(), Chain(Seq(Var("b")))),
+      Assignment("b", Seq(), Var("source"))
+    ) ~> Seq(
+      Assignment("b", Seq(), Var("source") annotated Source),
+      Assignment("a", Seq(), Chain(Seq(Var("b") annotated Source)) annotated Source)
+    ) ordered (
+      ("b", 0) before ("a", 0)
+    )
+  }
+
+  test("statement.assignment.reordering.nested.parallel") {
+    builtin(("source", 0) -> Source) ~> Seq(
+      Assignment("a", Seq(), Parallel(Seq(Var("b")))),
+      Assignment("b", Seq(), Var("source"))
+    ) ~> Seq(
+      Assignment("b", Seq(), Var("source") annotated Source),
+      Assignment("a", Seq(), Parallel(Seq(Var("b") annotated Source)) annotated Source)
+    ) ordered (
+      ("b", 0) before ("a", 0)
+    )
+  }
+
+  test("statement.assignment.reordering.nested.let") {
+    builtin() ~> Seq(
+      Assignment("a", Seq(), Let(Seq(Assignment("b", Seq(), Var("c"))), Var("b"))),
+      Assignment("c", Seq(), Num(1))
+    ) ~> Seq(
+      Assignment("c", Seq(), Num(1) annotated Number),
+        Assignment("a", Seq(), Let(
+          Seq(
+            Assignment("b", Seq(), Var("c") annotated Number)
+          ),
+          Var("b") annotated Number
+        ) annotated Number
+      )
+    ) ordered (
+      ("c", 0) before ("a", 0)
+    )
+  }
+
+  test("statement.assignment.reordering.many") {
+    builtin() ~> Seq(
+      Assignment("f", Seq(), Application("c", Seq(Var("e")))),
+      Assignment("d", Seq(), Var("a")),
+      Assignment("e", Seq(), Var("b")),
+      Assignment("a", Seq(), Num(1)),
+      Assignment("b", Seq(), Num(2)),
+      Assignment("c", Seq("param"), Var("param"))
+    ) ~> Seq(
+      Assignment("f", Seq(), Application("c", Seq(Var("e") annotated Number)) annotated Number),
+      Assignment("d", Seq(), Var("a") annotated Number),
+      Assignment("e", Seq(), Var("b") annotated Number),
+      Assignment("a", Seq(), Num(1) annotated Number),
+      Assignment("b", Seq(), Num(2) annotated Number),
+      Assignment("c", Seq("param"), Var("param") annotated Number)
+    ) ordered (
+      ("a", 0) before ("d", 0),
+      ("b", 0) before ("e", 0),
+      ("c", 1) before ("f", 0),
+      ("e", 0) before ("f", 0)
+    )
+  }
+
+  /**
+   * The bringToFront pitfall occurs when we naively bring all dependencies of an assignment to the
+   * front of the list when we check that assignment, regardless of whether they have already been
+   * checked. This can cause assignments which have already been moved forward to be reordered
+   * within the front part of the list, which can break interdependencies among those assignments.
+   * For example,
+   *     c = a
+   *     b = c
+   *     a = 1
+   * would, after typechecking c, be rearranged to
+   *     a = 1
+   *     c = a
+   *     b = c
+   * Then, when we typecheck b, since it references c, we would move c to the front, resulting in
+   *     c = a
+   *     a = 1
+   *     b = c
+   * This causes a dependency failure between c and a. We should move elements not to the front of
+   * the list but only to the front of the unchecked elements.
+   */
+  test("statement.assignment.reordering.pitfall.bringToFront") {
+    builtin() ~> Seq(
+      Assignment("c", Seq(), Var("a")),
+      Assignment("b", Seq(), Var("c")),
+      Assignment("a", Seq(), Num(1))
+    ) ~> Seq(
+      Assignment("a", Seq(), Num(1) annotated Number),
+      Assignment("c", Seq(), Var("a") annotated Number),
+      Assignment("b", Seq(), Var("c") annotated Number)
+    ) ordered (
+      ("a", 0) before ("c", 0),
+      ("c", 0) before ("b", 0)
+    )
+  }
+
+  /**
+   * The moveBackwards pitfall occurs when we naively move an element to the front of the unchecked
+   * elements whenever it is referenced. If we do so and that element had already been checked, we
+   * may actually be moving it backwards in the list, which can break dependencies among the front
+   * part of the list (the already-checked section). For example,
+   *     a = b
+   *     b = 1
+   *     c = b
+   * would, after typechecking a, be rearranged to
+   *     b = 1
+   *     a = b
+   *     c = b
+   * Then, when we typecheck c, since it references b, we would move b backwards, resulting in
+   *     a = b
+   *     b = 1
+   *     c = b
+   * which causes a dependency failure between a and b. We sould only reorder elements that have
+   * not already been typechecked and moved.
+   */
+  test("statement.assignment.reordering.pitfall.moveBackwards") {
+    builtin() ~> Seq(
+      Assignment("a", Seq(), Var("b")),
+      Assignment("b", Seq(), Num(1)),
+      Assignment("c", Seq(), Var("b"))
+    ) ~> Seq(
+      Assignment("b", Seq(), Num(1) annotated Number),
+      Assignment("a", Seq(), Var("b") annotated Number),
+      Assignment("c", Seq(), Var("b") annotated Number)
+    ) ordered (
+      ("b", 0) before ("a", 0),
+      ("b", 0) before ("c", 0)
+    )
   }
 
   test("statement.assignment.invalid.repeatedArg") {
@@ -454,27 +727,48 @@ class TypecheckSuite extends FunSuite with Matchers {
     val param = Ident("param")
     val definition = Var(Ident("definition"))
 
-    env("definition" -> Number) ~> Assignment(name, Seq(param, param), definition) ~/> statement
+    builtin(("definition", 0) -> Number) ~> Assignment(name, Seq(param, param), definition) ~/> statement
   }
 
   test("statement.assignment.invalid.unknownVar") {
-    env() ~> Assign(Ident("foo"), Var(Ident("bar"))) ~/> statement
+    builtin() ~> Assign(Ident("foo"), Var(Ident("bar"))) ~/> statement
   }
 
-  test("statement.assignment.invalid.reassignment.sameType") {
-    env("foo" -> Number) ~> Assign(Ident("foo"), Num(42)) ~/> statement
+  test("statement.assignment.invalid.reassignment.builtin.sameType") {
+    builtin(("foo", 0) -> Number) ~> Assign(Ident("foo"), Num(42)) ~/> statement
   }
 
-  test("statement.assignment.invalid.reassignment.differentType") {
-    env("foo" -> Source) ~> Assign(Ident("foo"), Num(42)) ~/> statement
+  test("statement.assignment.invalid.reassignment.builtin.differentType") {
+    builtin(("foo", 0) -> Source) ~> Assign(Ident("foo"), Num(42)) ~/> statement
   }
 
-  test("statement.assignment.invalid.selfAssign.known") {
-    env("foo" -> Number) ~> Assign(Ident("foo"), Var(Ident("foo"))) ~/> statement
+  test("statement.assignment.invalid.reassignment.userDefined.sameType") {
+    builtin() ~> Seq(
+      Assign("foo", Num(42)),
+      Assign("foo", Num(43))
+    ) ~/> program
   }
 
-  test("statement.assignment.invalid.selfAssign.unknown") {
-    env() ~> Assign(Ident("foo"), Var(Ident("foo"))) ~/> statement
+  test("statement.assignment.invalid.reassignment.userDefined.differentType") {
+    builtin(("source", 0) -> Source) ~> Seq(
+      Assign("foo", Var("source")),
+      Assign("foo", Num(42))
+    ) ~/> program
+  }
+
+  test("statement.assignment.invalid.recursive.known") {
+    builtin(("foo", 0) -> Number) ~> Assign(Ident("foo"), Var(Ident("foo"))) ~/> statement
+  }
+
+  test("statement.assignment.invalid.recursive.unknown") {
+    builtin() ~> Assign(Ident("foo"), Var(Ident("foo"))) ~/> statement
+  }
+
+  test("statement.assignment.invalid.recursive.mutual") {
+    builtin() ~> Seq(
+      Assign(Ident("foo"), Var("bar")),
+      Assign(Ident("bar"), Var("foo"))
+    ) ~/> program
   }
 
   test("statement.instrument.var") {
@@ -482,7 +776,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val body = Var(Ident("source"))
     val instr = Instrument(Seq(channel), body)
     val annotated = Instrument(Seq(channel annotated Number), body annotated Source)
-    env("source" -> Source) ~> instr ~> annotated
+    builtin(("source", 0) -> Source) ~> instr ~> annotated
   }
 
   test("statement.instrument.chain") {
@@ -498,7 +792,7 @@ class TypecheckSuite extends FunSuite with Matchers {
                       ))
                     annotated Source)
 
-    env("source" -> Source, "effect" -> Effect) ~> instr ~> annotated
+    builtin(("source", 0) -> Source, ("effect", 0) -> Effect) ~> instr ~> annotated
   }
 
   test("statement.instrument.varChannel") {
@@ -506,7 +800,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val body = Var(Ident("source"))
     val instr = Instrument(Seq(channel), body)
     val annotated = Instrument(Seq(channel annotated Number), body annotated Source)
-    env("source" -> Source, "channel" -> Number) ~> instr ~> annotated
+    builtin(("source", 0) -> Source, ("channel", 0) -> Number) ~> instr ~> annotated
   }
 
   def testMidiParam(paramName: String) = {
@@ -524,7 +818,7 @@ class TypecheckSuite extends FunSuite with Matchers {
                       ))
                     annotated Source)
 
-    env("source" -> (Source, 1)) ~> instr ~> annotated
+    builtin(("source", 1) -> Source) ~> instr ~> annotated
   }
 
   test("statement.instrument.midiParams.freq") {
@@ -542,7 +836,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val instr = Instrument(Seq(channel), body, Some(sends))
     val annotated = Instrument(
       Seq(channel annotated Number), body annotated Source, Some(sends annotated Effect))
-    env("source" -> Source, "effect" -> Effect) ~> instr ~> annotated
+    builtin(("source", 0) -> Source, ("effect", 0) -> Effect) ~> instr ~> annotated
   }
 
   test("statement.instrument.sends.chain") {
@@ -554,7 +848,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val instr = Instrument(Seq(channel), body, Some(sends))
     val annotated = Instrument(
       Seq(channel annotated Number), body annotated Source, Some(sendsAnnotated))
-    env("source" -> Source, "effect1" -> Effect, "effect2" -> Effect) ~> instr ~> annotated
+    builtin(("source", 0) -> Source, ("effect1", 0) -> Effect, ("effect2", 0) -> Effect) ~> instr ~> annotated
   }
 
   test("statement.instrument.sends.invalid.number") {
@@ -562,7 +856,7 @@ class TypecheckSuite extends FunSuite with Matchers {
     val body = Var(Ident("source"))
     val sends = Num(2)
     val instr = Instrument(Seq(channel), body, Some(sends))
-    env("source" -> Source) ~> instr ~/> statement
+    builtin(("source", 0) -> Source) ~> instr ~/> statement
   }
 
   test("statement.instrument.sends.invalid.source") {
@@ -570,63 +864,63 @@ class TypecheckSuite extends FunSuite with Matchers {
     val body = Var(Ident("source1"))
     val sends = Var(Ident("source2"))
     val instr = Instrument(Seq(channel), body, Some(sends))
-    env("source1" -> Source, "source2" -> Source) ~> instr ~/> statement
+    builtin(("source1", 0) -> Source, ("source2", 0) -> Source) ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.illtypedChannel") {
     val channel = Var(Ident("source"))
     val body = Var(Ident("source"))
     val instr = Instrument(Seq(channel), body)
-    env("source" -> Source) ~> instr ~/> statement
+    builtin(("source", 0) -> Source) ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.number") {
     val channel = Num(1)
     val body = Num(2)
     val instr = Instrument(Seq(channel), body)
-    env() ~> instr ~/> statement
+    builtin() ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.effectVar") {
     val channel = Num(1)
     val body = Var(Ident("effect"))
     val instr = Instrument(Seq(channel), body)
-    env("effect" -> Effect) ~> instr ~/> statement
+    builtin(("effect", 0) -> Effect) ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.effectChain") {
     val channel = Num(1)
     val body = Chain(Seq(Application(Ident("effect"), Seq())))
     val instr = Instrument(Seq(channel), body)
-    env("effect" -> Effect) ~> instr ~/> statement
+    builtin(("effect", 0) -> Effect) ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.unknownVar") {
     val channel = Num(1)
     val body = Var(Ident("foo"))
     val instr = Instrument(Seq(channel), body)
-    env() ~> instr ~/> statement
+    builtin() ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.manyOuts") {
     val channel = Num(1)
     val body = Parallel(Seq(Var("source1"), Var("source2")))
     val instr = Instrument(Seq(channel), body)
-    env("source1" -> Source, "source2" -> Source) ~> instr ~/> statement
+    builtin(("source1", 0) -> Source, ("source2", 0) -> Source) ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.oneInOneOut") {
     val channel = Num(1)
     val body = Parallel(Seq(Var("effect1")))
     val instr = Instrument(Seq(channel), body)
-    env("effect1" -> Effect) ~> instr ~/> statement
+    builtin(("effect1", 0) -> Effect) ~> instr ~/> statement
   }
 
   test("statement.instrument.invalid.oneInTwoOut") {
     val channel = Num(1)
     val body = Parallel(Seq(Var("source1"), Var("effect1")))
     val instr = Instrument(Seq(channel), body)
-    env("source1" -> Source, "effect1" -> Effect) ~> instr ~/> statement
+    builtin(("source1", 0) -> Source, ("effect1", 0) -> Effect) ~> instr ~/> statement
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -634,7 +928,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   //////////////////////////////////////////////////////////////////////////////////////////////////
 
   test("program.valid") {
-    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
+    builtin(("fm", 3) -> Source, ("compress", 2) -> Effect) ~>
     """
     foo = 1
     bar = foo
@@ -684,11 +978,13 @@ class TypecheckSuite extends FunSuite with Matchers {
             Application(Ident("effect"), Seq()) annotated Effect
           ))
         annotated Source)
+    ) ordered (
+      ("bar", 0) before ("effect", 0)
     )
   }
 
   test("program.invalid.firstLine") {
-    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
+    builtin(("fm", 3) -> Source, ("compress", 2) -> Effect) ~>
     """instr(1) = 1
     foo = 1
     bar = foo
@@ -712,7 +1008,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   }
 
   test("program.invalid.middle") {
-    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
+    builtin(("fm", 3) -> Source, ("compress", 2) -> Effect) ~>
     """
     |foo = 1
     |bar = foo
@@ -736,7 +1032,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   }
 
   test("program.invalid.lastLine") {
-    env("fm" -> (Source, 3), "compress" -> (Effect, 2)) ~>
+    builtin(("fm", 3) -> Source, ("compress", 2) -> Effect) ~>
     """
     |foo = 1
     |bar = foo

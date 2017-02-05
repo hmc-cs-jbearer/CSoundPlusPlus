@@ -45,7 +45,7 @@ object SwTranslator {
 
   // Get the csound type (i for init-rate, a for audio-rate, etc) of a soundwave expression
   def csType[T <: TypeAnnotation with SwPositional](elem: T) = elem.ty match {
-    case Some(Number) | Some(Function(Number, _)) => InitRate
+    case Some(Number)                             => InitRate
     case Some(_)                                  => AudioRate
     case None                                     =>
       throw new SwTranslateError(elem.loc, s"Untyped expression ${elem}.")
@@ -55,7 +55,6 @@ object SwTranslator {
     case CompNode(_, _, expr) => typeOf(expr)
 
     case _ => elem.ty match {
-      case Some(Function(ty, _)) => ty
       case Some(ty) => ty
       case None =>
         throw new SwTranslateError(elem.loc, s"Untyped expression ${elem}.")

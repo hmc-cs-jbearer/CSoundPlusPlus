@@ -362,7 +362,6 @@ object SwDag {
     }
 
   def typeOf[T <: TypeAnnotation with SwPositional](elem: T) = elem.ty match {
-    case Some(Function(ty, _)) => ty
     case Some(ty) => ty
     case None =>
       throw new SwTranslateError(elem.loc, s"Untyped expression ${elem}.")
