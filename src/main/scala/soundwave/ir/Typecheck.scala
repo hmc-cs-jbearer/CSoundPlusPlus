@@ -1,11 +1,11 @@
 package soundwave
 
-import scala.collection.immutable.{HashMap,HashSet}
-import scala.util.parsing.input.Positional
+import scala.collection.immutable.HashMap
+import scala.reflect._
+import scala.runtime._
 
 import absyn._
 import AbsynSugar._
-import common.HashList
 
 object SwTypeChecker {
 
@@ -15,7 +15,149 @@ object SwTypeChecker {
   // Map from identifiers to definitions
   type AssignmentMap = HashMap[(Ident, Int), Assignment]
 
-  case class Context(
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  // Monadic typecheckers encapsulating the state
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+
+  // A computation waiting for a context in which to be performed
+  abstract class TypecheckerBase[Result] {
+    // Perform the computation
+    def apply(context: Typechecker.Context): Either[SwError, (Typechecker.Context, Result)]
+    def apply(): Either[SwError, Result] = apply(Typechecker.Context()) match {
+      case Left(err)                => Left(err)
+      case Right((context, result)) => Right(result)
+    }
+
+    def filter(t: Result => Boolean): Typechecker[Result]
+
+    // Monadic bind
+    def map[T](f: Result => T): Typechecker[T]
+    def flatMap[T](f: Result => Typechecker[T]): Typechecker[T]
+  }
+
+  case class Typechecker[Result](
+    compute: Typechecker.Context => Either[SwError, (Typechecker.Context, Result)])
+    extends TypecheckerBase[Result]
+  {
+    def apply(context: Typechecker.Context) = compute(context)
+
+    object FilterError extends SwError {
+      override def toString = "filter returned false"
+    }
+
+    def filter(p: Result => Boolean) = Typechecker { context => this(context) match {
+        case Left(err)                                  => Left(err)
+        case r @ Right((context2, result)) if p(result) => r
+        case _                                          => Left(FilterError)
+      }
+    }
+
+    def withFilter(p: Result => Boolean) = filter(p)
+
+    def map[T](f: Result => T) = Typechecker { context => this(context) match {
+        case Left(err)                  => Left(err)
+        case Right((context2, result))  => Right((context2, f(result)))
+      }
+    }
+
+    def flatMap[T](f: Result => Typechecker[T]) = Typechecker { context => this(context) match {
+        case Left(err)                  => Left(err)
+        case Right((context2, result))  => f(result)(context2)
+      }
+    }
+  }
+
+  object Typechecker {
+    type Context = Map[String, Any]
+    val Context = Map
+
+    // Monadic identity
+    def apply[Result](r: Result): Typechecker[Result] =
+      Typechecker { context => Right((context, r)) }
+  }
+
+  def emit[T](result: T): Typechecker[T] = Typechecker(result)
+  def fail[T](error: SwError): Typechecker[T] = Typechecker { context => Left(error) }
+
+
+  val boxedClasses = Map[Class[_], Class[_]](
+    classOf[Double] -> classOf[java.lang.Double],
+    classOf[Float]  -> classOf[java.lang.Float],
+    classOf[Long]   -> classOf[java.lang.Long],
+    classOf[Int]    -> classOf[java.lang.Integer],
+    classOf[Char]   -> classOf[java.lang.Character],
+    classOf[Short]  -> classOf[java.lang.Short],
+    classOf[Byte]   -> classOf[java.lang.Byte],
+    classOf[Unit]   -> classOf[BoxedUnit],
+    classOf[Boolean]-> classOf[java.lang.Boolean]
+  )
+  def boxed(c: Class[_]) = boxedClasses.getOrElse(c, c)
+  def isInstance[T: ClassTag](that: Any) = boxed(classTag[T].runtimeClass).isInstance(that)
+  def nameOfType[T: ClassTag] = classTag[T].runtimeClass.toString
+
+  // Get the context associated with key. Error if key is not present or if the value associated
+  // with key is not an instance of T.
+  def getContext[T: ClassTag](key: String): Typechecker[T] = Typechecker { context =>
+    if (context contains key)
+      if (isInstance[T](context(key)))
+        Right((context, context(key).asInstanceOf[T]))
+      else
+        Left(SwInternalError(s"Invalid cast: ${context(key)} is not an instance of ${nameOfType[T]}"))
+    else
+      Left(SwInternalError(s"Invalid context lookup: unknown key $key"))
+  }
+
+  // Add a new key-value mapping to the context. Error if key already exists.
+  def putContext(key: String, value: Any): Typechecker[Unit] = Typechecker { context =>
+    if (context contains key)
+      Left(SwInternalError(s"Overwriting key $key"))
+    else
+      Right((context + (key -> value), ()))
+  }
+
+  // Set the value associted with key and return the old value. Error if key is not present, or if
+  // the value stored at key is not an instance of T
+  def updateContext[T: ClassTag](key: String, value: T): Typechecker[T] = Typechecker { context =>
+    if (context contains key)
+      if (isInstance[T](context(key))) {
+        val oldValue = context(key).asInstanceOf[T]
+        Right((context + (key -> value), oldValue))
+      } else {
+        Left(SwInternalError(s"Invalid cast: ${context(key)} is not an instance of ${nameOfType[T]}"))
+      }
+    else
+      Left(SwInternalError(s"Updating unkown key: $key"))
+  }
+
+  // Remove a key-value mapping from the context and return its previous value. Error if key is not
+  // present, or if the value stored at key is not an instance of T
+  def removeContext[T: ClassTag](key: String): Typechecker[T] = Typechecker { context =>
+    if (context contains key)
+      if (isInstance[T](context(key))) {
+        val oldValue = context(key).asInstanceOf[T]
+        Right((context - key, oldValue))
+      } else {
+        Left(SwInternalError(s"Invalid cast: ${context(key)} is not an instance of ${nameOfType[T]}"))
+      }
+    else
+      Left(SwInternalError(s"Removing unknown key: $key"))
+  }
+
+  def printContext: Typechecker[Unit] = Typechecker { context =>
+    println(context)
+    Right(context, ())
+  }
+
+  // Map a typechecker over a Seq, and then turn the Seq[Typechecker[T]] into a Typechecker[Seq[T]]
+  def forEach[T, U](elems: Seq[T])(f: T => Typechecker[U]): Typechecker[Seq[U]] =
+    if (elems.isEmpty)
+      Typechecker(Seq())
+    else for {
+      head <- f(elems.head)
+      tail <- forEach(elems.tail)(f)
+    } yield head +: tail
+
+  def initContext(
     // Assignments which have yet to be typechecked.
     assignmentsToCheck: AssignmentMap = new AssignmentMap(),
 
@@ -28,7 +170,6 @@ object SwTypeChecker {
 
     // Instrument definitions which need to be typechecked.
     instrumentsToCheck: Seq[Instrument] = Seq(),
-
     checkedInstruments: Seq[Instrument] = Seq(),
 
     // Built-in csound code which will be linked with this program. Since these are built-in, there
@@ -37,13 +178,42 @@ object SwTypeChecker {
 
     // We don't need the definition of locals when we look up a local, so we just store the type
     locals: TypeMap = new TypeMap()
-  )
+  ) = for {
+    _ <- putContext("assignmentsToCheck",   assignmentsToCheck)
+    _ <- putContext("checkedAssignments",   checkedAssignments)
+    _ <- putContext("checkedTypes",         checkedTypes)
+    _ <- putContext("instrumentsToCheck",   instrumentsToCheck)
+    _ <- putContext("checkedInstruments",   checkedInstruments)
+    _ <- putContext("primitives",           primitives)
+    _ <- putContext("locals",               locals)
+  } yield ()
+
+  def localScope[T](op: =>Typechecker[T]): Typechecker[T] = localScope(Seq())(op)
+
+  def localScope[T](newLocals: Seq[((Ident, Int), SwType)])(op: =>Typechecker[T]): Typechecker[T] =
+    for {
+      oldLocals <- getContext[TypeMap]("locals")
+      _         <- updateContext("locals", oldLocals ++ newLocals)
+      result    <- op
+      _         <- updateContext("locals", oldLocals)
+    } yield result
+
+  def localScope[T](local: ((Ident, Int), SwType), locals: ((Ident, Int), SwType)*)(
+    op: =>Typechecker[T]): Typechecker[T] =
+    localScope(local +: locals)(op)
+
+  def addLocal(a: Assignment) = for {
+    locals <- getContext[TypeMap]("locals")
+    Assignment(id, params, expr) = a
+    ty <- typeOf(expr)
+    _ <- updateContext("locals", locals + ((id, params.length) -> ty))
+  } yield ()
 
   /**
    * Typecheck the given program. Typechecking is performed in an environment where built-in
    * components are already mapped to their proper type.
    */
-  def apply(ast: Seq[Statement]): Either[SwTypeError, Seq[Statement]] = apply(
+  def apply(ast: Seq[Statement]): Either[SwError, Seq[Statement]] = apply(
     new TypeMap() + (
       // (name, arity) -> resultType
       (Ident("foscil"), 4)               -> Source,
@@ -66,301 +236,260 @@ object SwTypeChecker {
   )
 
   // Used for unit tests that want to specify their own set of built-in bindings
-  def apply(builtins: TypeMap, ast: Seq[Statement]): Either[SwTypeError, Seq[Statement]] = {
-    try {
-      val context = scan(Context(primitives = builtins), ast)
-      val context2 = annotateAssignments(context)
-      val context3 = annotateInstruments(context2)
-      Right(unscan(context3))
-    } catch {
-      case e: SwTypeError => Left(e)
-    }
+  def apply(builtins: TypeMap, ast: Seq[Statement]): Either[SwError, Seq[Statement]] = {
+    val typechecker = for {
+      _ <- initContext(primitives = builtins)
+      _ <- scan(ast)
+      _ <- annotateAssignments
+      _ <- annotateInstruments
+      result <- unscan
+    } yield result
+
+    typechecker()
   }
 
   // Build a map of all assignments in the program
-  def scan(context: Context, stmts: Seq[Statement]): Context =
-    if (stmts.isEmpty)
-      context
-    else {
-      val context2 = scan(context, stmts.tail)
-      stmts.head match {
-        case a @ Assignment(id, params, _) =>
-          if (context2.assignmentsToCheck contains (id, params.size))
-            throw new SwTypeError(a.loc, s"Redefinition of $id(${params.size}). " +
-              s"First declared here: ${context2.assignmentsToCheck((id, params.size)).loc}.")
-          else if (context2.primitives contains (id, params.size))
-            throw new SwTypeError(a.loc, s"Redefinition of built-in $id(${params.size})")
-          else
-            context2.copy(
-              assignmentsToCheck = context2.assignmentsToCheck + ((id, params.size) -> a))
-        case i: Instrument => context2.copy(instrumentsToCheck = i +: context2.instrumentsToCheck)
-      }
+  def scan(stmts: Seq[Statement]) = forEach(stmts) { stmt =>
+    stmt match {
+      case a @ Assignment(id, params, _) => for {
+        primitives <- getContext[TypeMap]("primitives")
+        assignmentsToCheck <- getContext[AssignmentMap]("assignmentsToCheck")
+        _ <- if (assignmentsToCheck contains (id, params.size))
+          fail(new SwTypeError(a.loc, s"Redefinition of $id(${params.size}). " +
+              s"First declared here: ${assignmentsToCheck((id, params.size)).loc}."))
+        else if (primitives contains (id, params.size))
+          fail(new SwTypeError(a.loc, s"Redefinition of built-in $id(${params.size})"))
+        else
+          updateContext("assignmentsToCheck", assignmentsToCheck + ((id, params.size) -> a))
+      } yield ()
+
+      case i: Instrument => for {
+        instrumentsToCheck <- getContext[Seq[Instrument]]("instrumentsToCheck")
+        _ <- updateContext("instrumentsToCheck", instrumentsToCheck :+ i)
+      } yield ()
     }
-
-  def unscan(context: Context): Seq[Statement] =
-    context.checkedAssignments ++ context.checkedInstruments
-
-  def annotateAssignments(context: Context): Context =
-    if (context.assignmentsToCheck.isEmpty)
-      context
-    else {
-      val a = context.assignmentsToCheck.head._2
-      val context2 = context.copy(assignmentsToCheck = context.assignmentsToCheck.tail)
-      annotateAssignments(annotateAssignment(context2, a))
-    }
-
-  def annotateAssignment(context: Context, current: Assignment): Context = {
-    val Assignment(id, params, expr) = current
-
-    // Bring the parameters into scope
-    val locals = params map ((_, 0)) // Each param is a 0-ary function resulting in a number
-    assertDistinct(locals)
-    val localContext = addLocals(context, locals map (_ -> Number))
-
-    val (localContext2, annotated) = annotateExpr(localContext, expr)
-
-    localContext2.copy(
-      // Revert the locals back to the state they were in when we got them
-      locals = context.locals,
-      // Remember the type of the assignment we just checked
-      checkedTypes = localContext2.checkedTypes + ((id, params.length) -> typeOf(annotated)),
-      // Add the annotated assignment to the end of the output list
-      checkedAssignments = localContext2.checkedAssignments :+ current.copy(definition = annotated)
-    )
   }
 
-  def annotateInstruments(context: Context): Context =
-    if (context.instrumentsToCheck.isEmpty)
-      context
-    else {
-      val i = context.instrumentsToCheck.head
-      val context2 = context.copy(instrumentsToCheck = context.instrumentsToCheck.tail)
-      annotateInstruments(annotateInstrument(context2, i))
-    }
+  def unscan: Typechecker[Seq[Statement]] = for {
+    checkedAssignments <- getContext[Seq[Statement]]("checkedAssignments")
+    checkedInstruments <- getContext[Seq[Statement]]("checkedInstruments")
+  } yield (checkedAssignments ++ checkedInstruments)
 
-  def annotateInstrument(context: Context, i: Instrument): Context = {
-    val Instrument(channels, definition, sends) = i
+  def annotateAssignments: Typechecker[Any] = for {
+    assignmentsToCheck <- getContext[AssignmentMap]("assignmentsToCheck")
+    _ <- if (assignmentsToCheck.isEmpty) emit(()) else for {
+      // Take this assignment off the todo list
+      (key, a) <- emit(assignmentsToCheck.head)
+      _ <- updateContext("assignmentsToCheck", assignmentsToCheck - key)
+      _ <- annotateAssignment(a)
+      _ <- annotateAssignments
+    } yield ()
+  } yield ()
 
-    def assertChannels(context: Context, channels: Seq[Expr]): (Context, Seq[Expr]) =
-      if (channels.isEmpty)
-        (context, Seq())
-      else {
-        val (context2, head) = assertExpr(context, channels.head, Number)
-        val (context3, tail) = assertChannels(context2, channels.tail)
-        (context3, head +: tail)
+  def annotateAssignment(a: Assignment): Typechecker[Unit] = for {
+    Assignment(id, params, expr) <- emit(a)
+    arity = params.length
+
+    _ <- assertDistinct(params map ((_, 0)))
+
+    // Annotate the assignment in a scope that includes the parameters
+    annotated <- localScope(params map ((_, 0) -> Number)) { annotateExpr(expr) }
+
+    // Remember the type of the assignment we just checked
+    checkedTypes <- getContext[TypeMap]("checkedTypes")
+    ty <- typeOf(annotated)
+    _ <- updateContext("checkedTypes", checkedTypes + ((id, arity) -> ty))
+
+    // Save the result
+    checkedAssignments <- getContext[Seq[Assignment]]("checkedAssignments")
+    _ <- updateContext("checkedAssignments", checkedAssignments :+ a.copy(definition = annotated))
+
+  } yield ()
+
+  def annotateInstruments: Typechecker[Any] = for {
+    instrumentsToCheck <- getContext[Seq[Instrument]]("instrumentsToCheck")
+    _ <- if (instrumentsToCheck.isEmpty) emit(()) else for {
+      // Take this instrument off the todo list
+      i <- emit(instrumentsToCheck.head)
+      _ <- updateContext("instrumentsToCheck", instrumentsToCheck.tail)
+      _ <- annotateInstrument(i)
+      _ <- annotateInstruments
+    } yield ()
+  } yield ()
+
+  def annotateInstrument(i: Instrument): Typechecker[Unit] = for {
+    Instrument(channels, definition, sends) <- emit(i)
+
+    annotatedChannels <- forEach(channels) { assertExpr(_, Number) }
+    annotatedDefinition <-
+      // Bring MIDI parameters into scope
+      localScope((Ident("amp"), 0) -> Number, (Ident("freq"), 0) -> Number) {
+        assertExpr(definition, Component(0, 1))
       }
 
-    val (context2, annotatedChannels) = assertChannels(context, channels)
-
-    // Bring MIDI parameters into scope
-    val localContext = addLocals(context, Seq((Ident("amp"), 0) -> Number, (Ident("freq"), 0) -> Number))
-
-    val (localContext2, annotatedDefinition) = assertExpr(localContext, definition, Component(0, 1))
-    val (localContext3, annotatedSends) = sends match {
-      case None => (localContext2, None)
-      case Some(body) => {
-        val (localContext3, annotatedSends) = assertExpr(localContext2, body, Component(1, 1))
-        (localContext3, Some(annotatedSends))
-      }
+    annotatedSends <- sends match {
+      case Some(expr)   => for {
+        annotated <- assertExpr(expr, Component(1, 1))
+      } yield Some(annotated)
+      case None         => emit(None)
     }
 
-    val annotated = i.copy(
+    // Save the result
+    annotated = i.copy(
       channels = annotatedChannels,
       definition = annotatedDefinition,
       sends = annotatedSends
     )
+    checkedInstruments <- getContext[Seq[Instrument]]("checkedInstruments")
+    _ <- updateContext("checkedInstruments", checkedInstruments :+ annotated)
+  } yield ()
 
-    localContext3.copy(
-      // Restore locals
-      locals = context.locals,
-      // Save the new instrument
-      checkedInstruments = localContext3.checkedInstruments :+ annotated
-    )
-  }
+  def annotateExpr(expr: Expr): Typechecker[Expr] = expr match {
+    case n: Num => emit(n annotated Number)
 
-  def annotateExpr(context: Context, expr: Expr): (Context, Expr) = expr match {
-    case n: Num => (context, n annotated Number)
+    case b @ BinOp(l, _, r, _) => for {
+      annotatedLeft <- assertExpr(l, Number)
+      annotatedRight <- assertExpr(r, Number)
+    } yield b.copy(
+      left = annotatedLeft,
+      right = annotatedRight
+    ) annotated Number
 
-    case BinOp(l, op, r, _) => {
-      val (context2, annotatedLeft) = assertExpr(context, l, Number)
-      val (context3, annotatedRight) = assertExpr(context2, r, Number)
-      (context3, BinOp(annotatedLeft, op, annotatedRight) annotated Number)
-    }
+    case a @ Application(id, args, _) => for {
+      annotatedArgs <- forEach(args) { assertExpr(_, Number) }
+      ty <- lookupVar(id, args.length)
+    } yield a.copy(args = annotatedArgs) annotated ty
 
-    case Application(id, args, _) => {
-      def assertArgs(context: Context, args: Seq[Expr]): (Context, Seq[Expr]) =
-        if (args.isEmpty)
-          (context, Seq())
-        else {
-          val (context2, head) = assertExpr(context, args.head, Number)
-          val (context3, tail) = assertArgs(context2, args.tail)
-          (context3, head +: tail)
-        }
-      val (context2, annotatedArgs) = assertArgs(context, args)
-      val (context3, ty) = lookupVar(context2, id, args.length)
-      (context3, Application(id, annotatedArgs) annotated ty)
-    }
-
-    case Chain(body, _) => {
-      def assertComponents(context: Context, body: Seq[Expr], inArity: Int): (Context, Seq[Expr]) =
-        if (body.isEmpty) {
-          (context, Seq())
-        } else {
-          val (context2, head, headOutArity) = assertExpr(context, body.head,
-            s"component with $inArity inputs",
-            { case Component(in, out) if in == inArity => out })
-
-          val (context3, tail) = assertComponents(context2, body.tail, headOutArity)
-
-          (context3, head +: tail)
-        }
-
+    case c @ Chain(body, _) =>
       if (body.isEmpty) {
         // An empty chain is the boring effect that passes its input through unchanged.
-        (context, expr annotated Effect)
-      } else {
-        val (context2, head, (inArity, headOutArity)) =
-          assertExpr(context, body.head, "component", { case Component(in, out) => (in, out) })
+        emit(expr annotated Effect)
+      } else for {
+        (head, (inArity, headOutArity)) <- assertExpr(body.head, "component",
+          { case Component(in, out) => (in, out) })
 
-        val (context3, tail) = assertComponents(context2, body.tail, headOutArity)
+        // The inArity of the tail of the chain must be the outArity of the head
+        _ <- putContext("inArity", headOutArity)
 
-        val (context4, _, outArity) = assertExpr(context3, (head +: tail).last, "component",
-                                       { case Component(_, out) => out })
+        // Check the tail, making sure each inter-component interface has the same arity
+        tail <- forEach(body.tail) { comp =>
+          for {
+            // Make sure the component has the proper inArity, and get the outArity
+            inArity <- getContext[Int]("inArity")
+            (annotated, outArity) <- assertExpr(comp, s"component with $inArity, inputs",
+              { case Component(in, out) if in == inArity => out })
 
-        (context4, Chain(head +: tail) annotated Component(inArity, outArity))
-      }
-    }
-
-    case Parallel(body, _) => {
-      // Annotate the inputs, and compute the arity
-      def assertComponents(context: Context, components: Seq[Expr]):
-        (Context, Seq[Expr], Seq[(Int, Int)]) =
-        if (components.isEmpty)
-          (context, Seq(), Seq())
-        else {
-          val (context2, head, arity) = assertExpr(context, components.head, "component",
-            { case Component(in, out) => (in, out) })
-          val (context3, tail, arities) = assertComponents(context2, components.tail)
-          (context3, head +: tail, arity +: arities)
+            // The inArity of the next component is the outArity of this one
+            _ <- updateContext("inArity", outArity)
+          } yield annotated
         }
 
-      val (context2, annotatedInputs, arities) = assertComponents(context, body)
+        // The last value of inArity is the outArity of the whole chain
+        outArity <- removeContext[Int]("inArity")
+      } yield c.copy(body = head +: tail) annotated Component(inArity, outArity)
 
-      val (inArities, outArities) = arities.unzip
-
-      val (inArity, outArity) = if (body.isEmpty) {
+    case p @ Parallel(body, _) =>
+      if (body.isEmpty)
         // An empty parallel block is treated the same as an empty chain: a trivial effect
-        (1, 1)
-      } else {
-        (inArities.sum, outArities.sum)
-      }
+        emit(expr annotated Effect)
+      else
+        for {
+          annotatedInputsAndArities <- forEach(body) {
+            assertExpr(_, "component", { case Component(in, out) => (in, out) })
+          }
+          (annotatedInputs, arities) = annotatedInputsAndArities.unzip
+          (inArities, outArities) = arities.unzip
+          (inArity, outArity) = (inArities.sum, outArities.sum)
+        } yield p.copy(body = annotatedInputs) annotated Component(inArity, outArity)
 
-      (context2, Parallel(annotatedInputs) annotated Component(inArity, outArity))
-    }
+    case l @ Let(bindings, body, _) => localScope {
+      for {
+        // Bindings in a let statement can shadow variables from an outer scope, but must be
+        // unique amongst each other
+        _ <- assertDistinct(bindings collect {
+          case Assignment(id, params, _) => (id, params.length)
+        })
 
-    case Let(bindings, body, _) => {
-      def annotateBindings(context: Context, bindings: Seq[Assignment]): (Context, Seq[Assignment]) =
-        if (bindings.isEmpty) {
-          (context, Seq())
-        } else {
-          val (context2, annotatedHead) = annotateBinding(context, bindings.head)
-          val (context3, annotatedTail) = annotateBindings(context2, bindings.tail)
-          (context3, annotatedHead +: annotatedTail)
+        // Annotate the bindings in the let
+        annotatedBindings <- forEach(bindings) { binding =>
+          for {
+            Assignment(id, params, expr) <- emit(binding)
+            _ <- assertDistinct(params map (_ -> 0))
+            annotatedExpr <- localScope(params map ((_, 0) -> Number)) { annotateExpr(expr) }
+            annotated = binding.copy(definition = annotatedExpr)
+            _ <- addLocal(annotated)
+          } yield annotated
         }
 
-      def annotateBinding(context: Context, binding: Assignment): (Context, Assignment) = {
-          val Assignment(id, params, expr) = binding
-
-          // Add the parameters to the local scope
-          val locals = params map ((_, 0)) // Each param is a 0-ary function resulting in a number
-          assertDistinct(locals)
-          val localContext = addLocals(context, locals map ((_ -> Number)))
-
-          val (localContext2, annotated) = annotateExpr(localContext, expr)
-
-          // Restore locals
-          val context2 = localContext2.copy(locals = context.locals)
-
-          (addLocal(context2, id, params.length, typeOf(annotated)), binding.copy(definition = annotated))
-        }
-
-      // Bindings in a let statement can shadow variables from an outerscope, but must be unique
-      // amongst each other
-      assertDistinct(bindings collect {
-        case Assignment(id, params, _) => (id, params.length)
-      })
-      val (localContext, annotatedBindings) = annotateBindings(context, bindings)
-      val (localContext2, annotatedBody) = annotateExpr(localContext, body)
-      // Restore the locals
-      val context2 = localContext2.copy(locals = context.locals)
-
-      (context2, Let(annotatedBindings, annotatedBody) annotated typeOf(annotatedBody))
+        // Annotate the body of the let
+        annotatedBody <- annotateExpr(body)
+        ty <- typeOf(annotatedBody)
+      } yield l.copy(bindings = annotatedBindings, body = annotatedBody) annotated ty
     }
+
   }
 
-  def assertExpr(context: Context, expr: Expr, expected: SwType): (Context, Expr) = {
-    val (context2, annotated, _) = assertExpr(context, expr, expected.toString,
-      { case ty if ty == expected => () })
-    (context2, annotated)
-  }
+  def assertExpr(expr: Expr, expected: SwType): Typechecker[Expr] = for {
+    (annotated, _) <- assertExpr(expr, expected.toString, { case ty if ty == expected => () })
+  } yield annotated
 
-  def assertExpr[T](context: Context, expr: Expr, expected: String, f: PartialFunction[SwType, T])
-    : (Context, Expr, T) =
-  {
-    val (context2, annotated) = annotateExpr(context, expr)
-    val ty = typeOf(annotated)
-    if (f isDefinedAt ty) {
-      (context2, annotated, f(ty))
-    } else {
-      throw new SwTypeError(
-        expr.loc, s"Expected ${expected} but found ${ty}.")
-    }
-  }
+  def assertExpr[T](expr: Expr, expected: String, f: PartialFunction[SwType, T]):
+    Typechecker[(Expr, T)] =
+    for {
+      annotated <- annotateExpr(expr)
+      ty <- typeOf(annotated)
+      result <-
+        if (f isDefinedAt ty)
+          emit((annotated, f(ty)))
+        else
+          fail(new SwTypeError(expr.loc, s"Expected ${expected} but found ${ty}."))
+    } yield result
 
-  def assertDistinct(toCheck: Seq[(Ident, Int)], checked: Set[(Ident, Int)] = Set()): Unit =
-    if (!toCheck.isEmpty) {
+  def assertDistinct(toCheck: Seq[(Ident, Int)], checked: Set[(Ident, Int)] = Set()): Typechecker[Unit] =
+    if (toCheck.isEmpty)
+      emit(())
+    else {
       if (checked contains toCheck.head) {
         val id = toCheck.head._1
-        throw new SwTypeError(id.loc, s"Redefinition of ${id.name}.")
+        fail(new SwTypeError(id.loc, s"Redefinition of ${id.name}."))
       } else {
         assertDistinct(toCheck.tail, checked + toCheck.head)
       }
     }
 
-  def lookupVar(context: Context, id: Ident, arity: Int): (Context, SwType) =
-    // Check locals first, since locals shadow globals
-    if (context.locals contains (id, arity))
-      (context, context.locals((id, arity)))
-    // Then check primitives
-    else if (context.primitives contains (id, arity))
-      (context, context.primitives((id, arity)))
-    // Check annotated globals
-    else if (context.checkedTypes contains (id, arity))
-      (context, context.checkedTypes((id, arity)))
-    // We have a global dependency which has not yet been typechecked
-    else if (context.assignmentsToCheck contains (id, arity)) {
-      val a = context.assignmentsToCheck((id, arity))
-      val context2 = context.copy(assignmentsToCheck = context.assignmentsToCheck - ((id, arity)))
-      val context3 = annotateAssignment(context2, a)
-      (context3, context3.checkedTypes((id, arity)))
-    } else {
-      throw new SwTypeError(id.loc, s"Unknown function $id($arity).")
-    }
+  def lookupVar(id: Ident, arity: Int): Typechecker[SwType] = for {
+    locals <- getContext[TypeMap]("locals")
+    primitives <- getContext[TypeMap]("primitives")
+    checkedTypes <- getContext[TypeMap]("checkedTypes")
+    assignmentsToCheck <- getContext[AssignmentMap]("assignmentsToCheck")
+    result <-
+      // Check locals first, since locals shadow globals
+      if (locals contains (id, arity))
+        emit(locals((id, arity)))
+      // The order in which we search from here on out doesn't matter, because we demand that
+      // primitives and assignments are unique, and no shadowing occurs. Check primitives next.
+      else if (primitives contains (id, arity))
+        emit(primitives((id, arity)))
+      // Check annotated globals
+      else if (checkedTypes contains (id, arity))
+        emit(checkedTypes((id, arity)))
+      // We have a global dependency which has not yet been typechecked
+      else if (assignmentsToCheck contains (id, arity))
+        for {
+          // Take the dependency off the todo list and check it
+          _ <- updateContext("assignmentsToCheck", assignmentsToCheck - ((id, arity)))
+          a = assignmentsToCheck((id, arity))
+          _ <- annotateAssignment(a)
 
-  def addLocal(context: Context, id: Ident, arity: Int, ty: SwType): Context =
-    context.copy(locals = context.locals + ((id, arity) -> ty))
+          // Now it is in the already checked list
+          result <- lookupVar(id, arity)
+        } yield result
+      else
+        fail(new SwTypeError(id.loc, s"Unknown function $id($arity)."))
+  } yield result
 
-  def addLocals(context: Context, locals: Seq[((Ident, Int), SwType)]): Context =
-    if (locals.isEmpty)
-      context
-    else {
-      val head = context.copy(locals = context.locals + locals.head)
-      addLocals(head, locals.tail)
-    }
-
-  def typeOf[T <: TypeAnnotation with SwPositional](elem: T) = elem.ty match {
-    case Some(ty) => ty
-    case None => throw new SwTypeError(
-      elem.loc, s"Unable to deduce type of $elem.")
+  def typeOf[T <: TypeAnnotation with SwPositional](elem: T): Typechecker[SwType] = elem.ty match {
+    case Some(ty) => emit(ty)
+    case None     => fail(new SwTypeError(elem.loc, s"Unable to deduce type of $elem."))
   }
 }

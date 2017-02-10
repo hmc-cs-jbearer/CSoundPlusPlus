@@ -11,7 +11,7 @@ object SwCompiler {
     val disabled = SwParser.disablingContext(config.inFile)
 
     // Compile the source file to get the human readable output, with whitespace and comments
-    val verbose: Either[SwCompileError, SwTranslator.CsLines] = for {
+    val verbose: Either[SwError, SwTranslator.CsLines] = for {
       preamble <- SwFileReader("csound/preamble.csd").right
       source <- SwFileReader(config.inFile).right
       tokens <- SwLexer(source).right

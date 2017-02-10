@@ -2,6 +2,7 @@ package soundwave
 
 import scala.language.implicitConversions
 import scala.util.parsing.input.{Position,Positional,NoPosition}
+import java.io._
 
 // Class used for reporting position of errors within the source file
 case class Location(line: Int, column: Int, file: String) extends Position {
@@ -29,7 +30,24 @@ trait SwPositional extends Positional {
   def loc: Location = Location(pos.line, pos.column, file)
 }
 
-class SwCompileError(val location: Location, val msg: String) extends Throwable {
+abstract class SwError extends Throwable {
+  override def getMessage = toString
+}
+
+case class SwInternalError(msg: String) extends SwError {
+  lazy val trace = {
+    val sw = new StringWriter()
+    printStackTrace(new PrintWriter(sw))
+    sw.toString
+  }
+
+  override def toString =
+    s"SoundWave has encountered a fatal error.\nDetails: $msg"
+
+  override def getMessage = trace
+}
+
+class SwCompileError(val location: Location, val msg: String) extends SwError {
     override def toString = s"($location) $msg"
 }
 

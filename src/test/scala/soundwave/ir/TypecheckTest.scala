@@ -21,35 +21,6 @@ class TypecheckSuite extends FunSuite with Matchers {
   def Var(id: Ident) = Application(id, Seq())
   def Assign(id: Ident, body: Expr) = Assignment(id, Seq(), body)
 
-  def tryGoodElement[T](
-    builtins: PrimitiveMap, input: T, expected: T, annotator: (PrimitiveMap, T) => T) = {
-    try {
-      annotator(builtins, input) should equal (expected)
-    } catch {
-      case e: SwCompileError => fail(e.toString + "\n" + e.getStackTrace.mkString("\n"))
-    }
-  }
-
-  def tryBadElement[T](
-    builtins: PrimitiveMap, input: T, expected: TypeError, annotator: (PrimitiveMap, T) => T) = {
-    try {
-      fail(annotator(builtins, input).toString ++ " was successful.")
-    } catch {
-      case SwCompileError(loc, _) => {
-        loc.line should equal (expected.line)
-        loc.column should equal (expected.column)
-      }
-    }
-  }
-
-  def tryBadElement[T](builtins: PrimitiveMap, input: T, annotator: (PrimitiveMap, T) => T) = {
-    try {
-      fail(annotator(builtins, input).toString ++ " was successful.")
-    } catch {
-      case SwCompileError(loc, _) => ()
-    }
-  }
-
   def testGoodInput(builtins: PrimitiveMap, input: Seq[Statement], expected: Seq[Statement]) = {
     SwTypeChecker(builtins, input) match {
       case Right(output) => {
@@ -71,7 +42,7 @@ class TypecheckSuite extends FunSuite with Matchers {
         output
       }
       case Left(err) => {
-        fail(input.toString ++ " failed to typecheck: " ++ err.toString)
+        fail(/*input.toString ++ " failed to typecheck: " ++*/ err.getMessage)
         Seq()
       }
     }
@@ -435,6 +406,13 @@ class TypecheckSuite extends FunSuite with Matchers {
 
   test("expression.let.invalid.unknown.inBody") {
     builtin() ~> Let(Seq(Assignment("x", Seq(), Num(5))), Var("y")) ~/> expr
+  }
+
+  test("expression.let.invalid.useAfter") {
+    builtin() ~> Seq(
+      Assign("foo", Let(Seq(Assign("x", Num(1))), Var("x"))),
+      Assign("bar", Var("x"))
+    ) ~/> program
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
