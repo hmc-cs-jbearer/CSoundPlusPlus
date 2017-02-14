@@ -10,10 +10,11 @@ import tokens._
 
 class TypecheckSuite extends FunSuite with Matchers {
 
-  type PrimitiveMap = SwTypeChecker.TypeMap
+  type TypeMap = SwTypeChecker.TypeMap
+  val TypeMap = SwTypeChecker.TypeMap
 
-  def builtin(mappings: ((String, Int), SwType)*): PrimitiveMap =
-    new PrimitiveMap() ++ (mappings collect {
+  def builtin(mappings: ((String, Int), SwType)*): TypeMap =
+    TypeMap() ++ (mappings collect {
       case ((name, arity), ty) => ((Ident(name), arity), ty)
     })
 
@@ -21,7 +22,7 @@ class TypecheckSuite extends FunSuite with Matchers {
   def Var(id: Ident) = Application(id, Seq())
   def Assign(id: Ident, body: Expr) = Assignment(id, Seq(), body)
 
-  def testGoodInput(builtins: PrimitiveMap, input: Seq[Statement], expected: Seq[Statement]) = {
+  def testGoodInput(builtins: TypeMap, input: Seq[Statement], expected: Seq[Statement]) = {
     SwTypeChecker(builtins, input) match {
       case Right(output) => {
         // The exact order is undefined, so we compare them as sets. To check a partial ordering,
@@ -48,13 +49,13 @@ class TypecheckSuite extends FunSuite with Matchers {
     }
   }
 
-  def testBadInput(builtins: PrimitiveMap, input: Seq[Statement], loc: Location) =
+  def testBadInput(builtins: TypeMap, input: Seq[Statement], loc: Location) =
   SwTypeChecker(builtins, input) match {
     case Right(output)                          => fail(output.toString ++ " was successful.")
     case Left(SwCompileError(reportedLoc, _)) => reportedLoc should equal (loc)
   }
 
-  def testBadInput(builtins: PrimitiveMap, input: Seq[Statement]) =
+  def testBadInput(builtins: TypeMap, input: Seq[Statement]) =
     SwTypeChecker(builtins, input) match {
       case Right(output)  => fail(output.toString ++ " was successful.")
       case Left(_)        => ()
@@ -62,7 +63,7 @@ class TypecheckSuite extends FunSuite with Matchers {
 
   // Test a whole program starting from a string, and going through the lexing, parsing, and
   // typecheck phases. This is used to test the locations reported with type errors
-  class SystemTester(builtins: PrimitiveMap, input: String) {
+  class SystemTester(builtins: TypeMap, input: String) {
     def lexAndThen[T](continue: Seq[SwToken] => T)(input: String) = {
       SwLexer(input) match {
         case Right(output)                            => continue(output)
@@ -96,7 +97,7 @@ class TypecheckSuite extends FunSuite with Matchers {
       } (input)
   }
 
-  class ProgramTester(val builtins: PrimitiveMap, val input: Seq[Statement]) {
+  class ProgramTester(val builtins: TypeMap, val input: Seq[Statement]) {
     def ~>(output: Seq[Statement]) = new OrderingAssertible(testGoodInput(builtins, input, output))
     def ~>(error: TypeError) = testBadInput(builtins, input, error)
     def ~/>(output: ExpectFailure) = testBadInput(builtins, input)
@@ -129,13 +130,13 @@ class TypecheckSuite extends FunSuite with Matchers {
     def before(second: (String, Int)) = ((Ident(first._1), first._2), (Ident(second._1), second._2))
   }
 
-  class StmtTester(builtins: PrimitiveMap, input: Statement) {
+  class StmtTester(builtins: TypeMap, input: Statement) {
     def ~>(output: Statement) = builtins ~> Seq(input) ~> Seq(output)
     def ~>(error: TypeError) = builtins ~> Seq(input) ~> error
     def ~/>(output: ExpectFailure) = builtins ~> Seq(input) ~/> output
   }
 
-  class ExprTester(builtins: PrimitiveMap, input: Expr) {
+  class ExprTester(builtins: TypeMap, input: Expr) {
     def ~>(output: Expr) = builtins ~>
       // Wrap the expression in a bogus assignment
       Assignment("_unique_name", Seq(), input) ~> Assignment("_unique_name", Seq(), output)
@@ -149,7 +150,7 @@ class TypecheckSuite extends FunSuite with Matchers {
       Assignment("_unique_name", Seq(), input) ~/> output
   }
 
-  implicit class TypecheckTestBuilder(builtins: PrimitiveMap) {
+  implicit class TypecheckTestBuilder(builtins: TypeMap) {
     def ~>(input: Seq[Statement]) = new ProgramTester(builtins, input)
     def ~>(input: Statement) = new StmtTester(builtins, input)
     def ~>(input: Expr) = new ExprTester(builtins, input)

@@ -47,6 +47,14 @@ case class SwInternalError(msg: String) extends SwError {
   override def getMessage = trace
 }
 
+case class SwUnimplementedError(feature: String) extends SwError {
+  override def toString = s"Error: $feature is not implemented"
+}
+
+case class SwRuntimeError(msg: String) extends SwError {
+  override def toString = msg
+}
+
 class SwCompileError(val location: Location, val msg: String) extends SwError {
     override def toString = s"($location) $msg"
 }

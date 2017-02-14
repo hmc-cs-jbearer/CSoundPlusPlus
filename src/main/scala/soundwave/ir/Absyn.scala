@@ -116,6 +116,8 @@ case class Component(inArity: Int, outArity: Int) extends SwType {
 object AbsynSugar {
   implicit def string2Ident(s: String) = Ident(s)
 
+  implicit def double2Num(d: Double) = Num(d)
+
   // Source is an alias for a component with no input and one output
   object Source extends Component(0, 1)
 

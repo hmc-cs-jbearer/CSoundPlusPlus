@@ -1,6 +1,6 @@
 package soundwave
 
-import scala.collection.immutable.HashMap
+import scala.collection.Map
 import scala.reflect._
 import scala.runtime._
 
@@ -10,10 +10,12 @@ import AbsynSugar._
 object SwTypeChecker {
 
   // Map from identifiers to types
-  type TypeMap = HashMap[(Ident, Int), SwType]
+  type TypeMap = Map[(Ident, Int), SwType]
+  val TypeMap = Map
 
   // Map from identifiers to definitions
-  type AssignmentMap = HashMap[(Ident, Int), Assignment]
+  type AssignmentMap = Map[(Ident, Int), Assignment]
+  val AssignmentMap = Map
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Monadic typecheckers encapsulating the state
@@ -159,14 +161,14 @@ object SwTypeChecker {
 
   def initContext(
     // Assignments which have yet to be typechecked.
-    assignmentsToCheck: AssignmentMap = new AssignmentMap(),
+    assignmentsToCheck: AssignmentMap = AssignmentMap(),
 
     // This is ordered, because the order in which we translate assignments matters. Because it is
     // ordered, we will not lookup types from here to satisfy dependencies. Instead...
     checkedAssignments: Seq[Assignment] = Seq(),
 
     // ... we look up dependencies from here, which contains just the type information.
-    checkedTypes: TypeMap = new TypeMap(),
+    checkedTypes: TypeMap = TypeMap(),
 
     // Instrument definitions which need to be typechecked.
     instrumentsToCheck: Seq[Instrument] = Seq(),
@@ -174,10 +176,10 @@ object SwTypeChecker {
 
     // Built-in csound code which will be linked with this program. Since these are built-in, there
     // are no definitions available, just the types.
-    primitives: TypeMap = new TypeMap(),
+    primitives: TypeMap = TypeMap(),
 
     // We don't need the definition of locals when we look up a local, so we just store the type
-    locals: TypeMap = new TypeMap()
+    locals: TypeMap = TypeMap()
   ) = for {
     _ <- putContext("assignmentsToCheck",   assignmentsToCheck)
     _ <- putContext("checkedAssignments",   checkedAssignments)
@@ -213,27 +215,8 @@ object SwTypeChecker {
    * Typecheck the given program. Typechecking is performed in an environment where built-in
    * components are already mapped to their proper type.
    */
-  def apply(ast: Seq[Statement]): Either[SwError, Seq[Statement]] = apply(
-    new TypeMap() + (
-      // (name, arity) -> resultType
-      (Ident("foscil"), 4)               -> Source,
-      (Ident("sine"), 2)                 -> Source,
-      (Ident("pulse"), 2)                -> Source,
-      (Ident("sidechain_compress"), 5)   -> Component(2, 1),
-      (Ident("compress"), 5)             -> Effect,
-      (Ident("adsr"), 4)                 -> Effect,
-      (Ident("average"), 0)              -> Component(4, 1),
-      (Ident("delay"), 2)                -> Component(1, 1),
-      (Ident("reverb"), 1)               -> Component(1, 1),
-      (Ident("scale"), 1)                -> Component(1, 1),
-      (Ident("transpose"), 1)            -> Component(1, 1),
-      (Ident("filt"), 4)                 -> Component(1, 1),
-      (Ident("sqrt"), 1)                 -> Number,
-      (Ident("lopass_sweep"), 6)         -> Component(1, 1),
-      (Ident("sum"), 0)                  -> Component(4, 1)
-    ),
-    ast
-  )
+  def apply(ast: Seq[Statement]): Either[SwError, Seq[Statement]] =
+    apply(SwPrimitives.types, ast)
 
   // Used for unit tests that want to specify their own set of built-in bindings
   def apply(builtins: TypeMap, ast: Seq[Statement]): Either[SwError, Seq[Statement]] = {

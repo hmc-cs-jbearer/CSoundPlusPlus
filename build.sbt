@@ -16,7 +16,8 @@ libraryDependencies ++= Seq(
   "commons-lang" % "commons-lang" % "2.6",
   "com.github.scopt" %% "scopt" % "3.2.0",
   "com.github.scala-incubator.io" %% "scala-io-core" % "0.4.3",
-  "com.github.scala-incubator.io" %% "scala-io-file" % "0.4.3"
+  "com.github.scala-incubator.io" %% "scala-io-file" % "0.4.3",
+  "org.scalacheck" %% "scalacheck" % "1.13.4" % "test"
 )
 
 unmanagedClasspath in (Compile, runMain) += baseDirectory.value / "resources"
